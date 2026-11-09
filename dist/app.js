@@ -13,7 +13,7 @@ try { saved = JSON.parse(localStorage.getItem('brick-by-brick-v1') || '{}') || {
 const state = {drafts:saved.drafts || {}, passed:saved.passed || {}, muted:!!saved.muted, learnerName:normalizeLearnerName(saved.learnerName), namePromptSeen:!!saved.namePromptSeen};
 let current=0, expanded=new Set([0]), runId=0, runtimeError=false, runReady=false, draftTimer;
 let pendingChecks = new Map(), checkSerial=0;
-const player = {time:0,playing:false,caption:true,segment:-1,last:0};
+const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,utterance:null};
 function persist() {
   try {localStorage.setItem('brick-by-brick-v1',JSON.stringify(state));} catch {storageAvailable=false;}
   if(!storageAvailable) $('#save-status').textContent='Progress available this visit';
@@ -26,13 +26,14 @@ function narrationText(segment){
   return segment===0&&state.learnerName?`${state.learnerName}, ${text.charAt(0).toLowerCase()}${text.slice(1)}`:text;
 }
 function renderPersonalization(){
+  stopNarration();
   $('#profile-label').textContent=state.learnerName || 'Your name';
   $('#profile-button').setAttribute('aria-label',state.learnerName?`Change your name, currently ${state.learnerName}`:'Set your name');
   $('#exercise-greeting').textContent=state.learnerName?`Your turn, ${state.learnerName}`:'Your turn';
   player.segment=-1;updatePlayer();
 }
 function openNamePrompt(){
-  if(player.playing){player.playing=false;stopNarration();updatePlayer();}
+  if(player.playing)pausePlayback();
   const input=$('#learner-name');input.value=state.learnerName;input.setCustomValidity('');
   $('#skip-name').textContent=state.learnerName?'Cancel':'Maybe later';
   $('#name-dialog').showModal();input.focus();
@@ -162,29 +163,71 @@ async function checkExercise(i){
   }
 }
 
-function stopNarration(){if('speechSynthesis'in window)speechSynthesis.cancel();}
+function stopNarration(){
+  // Invalidate callbacks before cancel(), which can dispatch an old error event.
+  player.speechGeneration++;
+  clearTimeout(player.speechTimer);player.speechTimer=null;
+  player.utterance=null;
+  if('speechSynthesis'in window)speechSynthesis.cancel();
+}
 function speakSegment(){
   stopNarration();if(state.muted||!player.playing)return;
   if(!('speechSynthesis'in window)||!('SpeechSynthesisUtterance'in window)){$('#voice-note').textContent='Your browser has no narration voice · Follow the captions below the animation';return;}
-  const sentence=narrationText(Math.min(5,Math.floor(player.time/10)));
+  const generation=player.speechGeneration;
+  const fullSentence=narrationText(Math.min(5,Math.floor(player.time/10)));
+  // Resume near the current word without relying on the native engine's
+  // inconsistent pause/resume queue. Captions continue to show the full sentence.
+  const words=fullSentence.split(/\s+/);
+  const word=Math.min(words.length-1,Math.floor(words.length*(player.time%10)/10));
+  const sentence=words.slice(word).join(' ');
   const utterance=new SpeechSynthesisUtterance(sentence);utterance.lang='en-US';utterance.rate=Math.max(1,Math.min(1.3,sentence.split(/\s+/).length/24));
   const voices=speechSynthesis.getVoices();const voice=voices.find(v=>v.lang==='en-US'&&/samantha|aria|jenny|google us/i.test(v.name)) || voices.find(v=>v.lang.startsWith('en'));
   if(voice)utterance.voice=voice;
-  utterance.onerror=e=>{if(!['interrupted','canceled'].includes(e.error))$('#voice-note').textContent='Voice is unavailable in this browser · Follow the captions below the animation';};
-  speechSynthesis.speak(utterance);
+  // Keep a strong reference until narration finishes or is canceled.
+  player.utterance=utterance;
+  utterance.onstart=()=>{if(generation===player.speechGeneration)$('#voice-note').textContent='Narrated in your browser · Captions always available';};
+  utterance.onend=()=>{if(generation===player.speechGeneration)player.utterance=null;};
+  utterance.onerror=e=>{
+    if(generation!==player.speechGeneration)return;
+    player.utterance=null;
+    if(!['interrupted','canceled'].includes(e.error))$('#voice-note').textContent='Voice is unavailable in this browser · Follow the captions below the animation';
+  };
+  // Give the native speech engine time to clear cancellation before requeuing.
+  player.speechTimer=setTimeout(()=>{
+    player.speechTimer=null;
+    if(generation!==player.speechGeneration||!player.playing||state.muted)return;
+    try{if(speechSynthesis.paused)speechSynthesis.resume();speechSynthesis.speak(utterance);}
+    catch{utterance.onerror({error:'synthesis-unavailable'});}
+  },50);
 }
 function updatePlayer(){
-  $('#demo-play').innerHTML=player.playing?icons.pause:icons.play;
+  // Preserve the actual click targets between pointerdown and pointerup.
+  if(player.renderedPlaying!==player.playing){$('#demo-play').innerHTML=player.playing?icons.pause:icons.play;player.renderedPlaying=player.playing;}
   $('#demo-play').setAttribute('aria-label',player.playing?'Pause explanation':player.time>=60?'Replay explanation':'Play one-minute explanation');
-  $('#voice-toggle').innerHTML=state.muted?icons.mute:icons.sound;$('#voice-toggle').setAttribute('aria-label',state.muted?'Turn narration on':'Mute narration');$('#voice-toggle').setAttribute('aria-pressed',String(state.muted));
+  if(player.renderedMuted!==state.muted){$('#voice-toggle').innerHTML=state.muted?icons.mute:icons.sound;player.renderedMuted=state.muted;}
+  $('#voice-toggle').setAttribute('aria-label',state.muted?'Turn narration on':'Mute narration');$('#voice-toggle').setAttribute('aria-pressed',String(state.muted));
   $('#demo-time').innerHTML=`${Math.floor(player.time/60)}:${String(Math.floor(player.time%60)).padStart(2,'0')} <span>/ 1:00</span>`;$('#demo-seek').value=player.time;
   const seg=Math.min(5,Math.floor(player.time/10));
   const sentence=narrationText(seg);
   $('#demo-caption').textContent=player.caption?sentence:'';
   $('#concept-canvas').setAttribute('aria-label',sentence);
-  if(seg!==player.segment){player.segment=seg;if(player.playing)speakSegment();}
+  player.segment=seg;
 }
-function togglePlayback(){if(player.time>=60){player.time=0;player.segment=-1;}player.playing=!player.playing;player.last=performance.now();if(player.playing)speakSegment();else stopNarration();updatePlayer();}
+function pausePlayback(){
+  player.playing=false;stopNarration();updatePlayer();
+}
+function togglePlayback(){
+  if(player.playing){pausePlayback();return;}
+  if(player.time>=60)player.time=0;
+  player.playing=true;player.last=performance.now();updatePlayer();
+  speakSegment();
+}
+function seekPlayback(time){
+  player.time=Math.max(0,Math.min(60,Number(time)||0));player.last=performance.now();
+  if(player.time>=60)player.playing=false;
+  updatePlayer();
+  if(player.playing)speakSegment();else stopNarration();
+}
 
 // Purpose-built canvas diagrams; animation is rendered locally, with no video service.
 const ctx=$('#concept-canvas').getContext('2d');
@@ -194,7 +237,7 @@ function ball(x,y,r,color='#ec693f'){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
 function arrow(x1,y1,x2,y2,color='#b5abc9'){ctx.strokeStyle=color;ctx.lineWidth=1.7;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(x2-7,y2-5);ctx.lineTo(x2,y2);ctx.lineTo(x2-7,y2+5);ctx.stroke();}
 function drawConcept(now){
   const c=COURSE[current].concept, t=player.time, phase=Math.min(5,Math.floor(t/10));
-  const movement=player.playing?t:0;
+  const movement=t;
   ctx.clearRect(0,0,900,350);
   const codes={canvas:['function setup() {','  createCanvas(480, 320);','}','circle(240, 160, 80);'],coordinates:['x → across','y ↓ down','circle(x, y, size);'],color:["fill('#ec693f');",'circle(240, 160, 80);',"fill('#7e73bd');"],loop:['setup()  →  once','draw()   →  again','         ↳ again ↺'],variables:['let ballSize = 60;','', 'circle(x, y, ballSize);'],movement:['let speed = 2;','x += speed;','circle(x, 160, 40);'],conditions:['if (x > threshold) {',"  fill('#ec693f');",'} else { /* purple */ }'],bounce:['if (touchingWall) {','  speed *= -1;','}'],mouse:['mouseX → x','mouseY → y','circle(mouseX, mouseY, 40);'],keyboard:['if (keyIsDown(→)) {','  paddleX += speed;','}'],functions:['function drawBall() {','  // your recipe','}','drawBall();'],parameters:['drawBall(120, 160, 40);','drawBall(240, 160, 65);','drawBall(360, 160, 90);'],for:['for (let i = 0;','     i < 5; i++) {','  circle(60+i*75,160,30);','}'],arrays:['let sizes = [25,40,60,80];','sizes[0] → 25','sizes.length → 4'],grid:['for (each row) {','  for (each column) {','    draw a brick','  }','}'],objects:['ball = {','  x: 240, y: 160,','  size: 60','}'],classes:['class Ball { ... }','new Ball(130,160,40);','new Ball(350,160,80);'],random:['random(50, 430)','random(15, 45)','// a new possibility'],collision:['nearest = constrain(...)','gap = dist(ball, nearest)','touching = gap < radius'],paddle:['if (touchingPaddle) {','  speedY = -abs(speedY);','}'],bricks:['if (hit && brick.alive) {','  brick.alive = false;','}'],score:['score += 10;','lives -= 1;','text(score, 20, 24);'],states:["state = 'ready';","click → 'playing'","no lives → 'over'"],particles:['particles.push({...});','life -= 1;','// move, fade, remove'],levels:['if (allBricksGone) {','  level += 1;','  makeBricks();','}'],game:['curiosity + small steps','        ↓','your very own game.']};
   const lines=codes[c]||codes.canvas;
@@ -252,7 +295,13 @@ function drawConcept(now){
   label('↗',842,72,25,'#c5bcd5');
 }
 function animationFrame(now){
-  if(player.playing){const delta=Math.min((now-player.last)/1000,.2);player.time=Math.min(60,player.time+delta);if(player.time>=60){player.playing=false;stopNarration();}updatePlayer();}
+  if(player.playing){
+    const delta=Math.min((now-player.last)/1000,.2);player.time=Math.min(60,player.time+delta);
+    const segmentChanged=Math.min(5,Math.floor(player.time/10))!==player.segment;
+    if(player.time>=60){player.playing=false;stopNarration();}
+    updatePlayer();
+    if(player.playing&&segmentChanged)speakSegment();
+  }
   player.last=now;drawConcept(now);requestAnimationFrame(animationFrame);
 }
 
@@ -274,8 +323,8 @@ $('#reset-code').addEventListener('click',()=>{$('#reset-dialog').showModal();})
 $('#confirm-reset').addEventListener('click',()=>{$('#code-editor').value=COURSE[current].code;updateEditor();runSketch();$('#reset-dialog').close();toast('Starter code restored. A fresh place to experiment.');});
 $('#fullscreen-preview').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else if($('#preview-stage').requestFullscreen)await $('#preview-stage').requestFullscreen();else toast('Use your browser’s zoom to expand this canvas.');}catch{toast('Full screen is unavailable. You can use your browser’s zoom.');}});
 $('#demo-play').addEventListener('click',togglePlayback);
-$('#demo-restart').addEventListener('click',()=>{player.time=0;player.segment=-1;player.last=performance.now();stopNarration();updatePlayer();});
-$('#demo-seek').addEventListener('input',e=>{player.time=+e.target.value;player.segment=-1;player.last=performance.now();stopNarration();updatePlayer();});
+$('#demo-restart').addEventListener('click',()=>seekPlayback(0));
+$('#demo-seek').addEventListener('input',e=>seekPlayback(e.target.value));
 $('#voice-toggle').addEventListener('click',()=>{state.muted=!state.muted;persist();state.muted?stopNarration():speakSegment();updatePlayer();});
 $('#captions-toggle').addEventListener('click',()=>{player.caption=!player.caption;$('#captions-toggle').setAttribute('aria-pressed',String(player.caption));updatePlayer();});
 $('#map-button').addEventListener('click',showMap);$('#close-map').addEventListener('click',()=>$('#course-dialog').close());
@@ -293,7 +342,7 @@ $('#final-project').addEventListener('click',()=>goChapter(26));$('#mobile-menu'
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#sidebar')&&!e.target.closest('#mobile-menu'))$('#sidebar').classList.remove('mobile-open');});
 $('#download-code').addEventListener('click',()=>{saveDraft();const url=URL.createObjectURL(new Blob([$('#code-editor').value],{type:'text/javascript'}));const a=document.createElement('a');a.href=url;a.download=`brick-by-brick-chapter-${current+1}.js`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Sketch downloaded. Try it at editor.p5js.org!');});
 window.addEventListener('hashchange',route);window.addEventListener('pagehide',()=>{saveDraft();stopNarration();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&player.playing){player.playing=false;stopNarration();updatePlayer();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&player.playing)pausePlayback();});
 for(const d of document.querySelectorAll('dialog'))d.addEventListener('click',e=>{if(e.target===d){const b=d.getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)d.close();}});
 persist();route();renderPersonalization();
 if(!state.learnerName&&!state.namePromptSeen)openNamePrompt();

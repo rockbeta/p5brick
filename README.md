@@ -30,6 +30,8 @@ Run `npm run check` and `npm test` to verify changes locally. No dependency inst
 
 The one-minute explanations use `speechSynthesis`, with voice availability depending on the learner's browser and OS. Captions work independently. Narration starts only when the learner presses play. This version uses the browser's voice rather than pre-recorded audio files.
 
+Playback supports repeated replay, pause, restart, seeking, and mute. Pausing freezes the animation and cancels native speech; resuming starts a fresh utterance near the corresponding word in the current caption. This avoids keeping a browser speech queue paused between plays. The playback regression suite runs three full simulated lessons and checks cancellation, rapid clicks, controls, and replay alongside the curriculum tests.
+
 On a first visit, learners can enter a first name or nickname. Tutorial narration and captions greet them by name at the beginning of each chapter. The name is stored with their existing browser-local progress and can be changed using the name button in the top bar. Choosing **Maybe later** continues without a name and dismisses the first-visit prompt. No name is sent to a site server or GitHub; browser speech synthesis may use the browser or operating system's voice service.
 
 ## Learner controls

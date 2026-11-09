@@ -6,6 +6,6 @@
   "scripts": {
     "start": "python3 -m http.server 4173 --directory dist",
     "check": "node --check dist/course.js && node --check dist/app.js",
-    "test": "node qa/course.test.cjs"
+    "test": "node qa/course.test.cjs && node qa/playback.test.cjs"
   }
 }
