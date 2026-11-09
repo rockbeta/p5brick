@@ -109,13 +109,14 @@ function frameDocument(code,id){
     const __runId=${id};
     const __send=(type,data={})=>parent.postMessage({source:'brick-sketch',runId:__runId,type,...data},'*');
     let __hasError=false;
-    window.onerror=(message,source,line,column)=>{__hasError=true;__send('error',{message:String(message),line,column});return true;};
+    window.onerror=(message,source,line,column)=>{__hasError=true;__send('error',{message:String(message),source:String(source||''),line,column});return true;};
     window.onunhandledrejection=e=>{__hasError=true;__send('error',{message:String(e.reason?.message||e.reason)});};
     window.__calls={};window.__setupCalls={};
     const __tracked=['circle','rect','fill','background','frameRate','random','createCanvas','text','line'];
     for(const n of __tracked){window.__calls[n]=[];window.__setupCalls[n]=[];}
-    let __recordSetup=true;
-    function __instrument(){for(const n of __tracked){const original=window[n];window[n]=function(...args){const store=__recordSetup?window.__setupCalls:window.__calls;if(store[n].length<10000)store[n].push(args);return original.apply(this,args);};}}
+    let __recordSetup=true,__fill='';
+    // Each recorded circle/rect remembers the fill color it was drawn with.
+    function __instrument(){for(const n of __tracked){const original=window[n];window[n]=function(...args){if(n==='fill')__fill=args.map(String).join(',');if(n==='circle'||n==='rect')args.fill=__fill;const store=__recordSetup?window.__setupCalls:window.__calls;if(store[n].length<10000)store[n].push(args);return original.apply(this,args);};}}
     window.addEventListener('message',e=>{if(e.source!==parent||e.data?.type!=='inspect'||e.data.runId!==__runId)return;let results=e.data.tests.map(test=>{try{return !__hasError&&Boolean((0,eval)(test));}catch{return false;}});__send('checks',{request:e.data.request,results});});
     window.addEventListener('load',()=>{setTimeout(()=>{const canvas=document.querySelector('canvas');if(canvas){canvas.tabIndex=0;canvas.setAttribute('aria-label','Interactive p5.js canvas. Click to focus.');canvas.addEventListener('pointerdown',()=>canvas.focus());}if(!__hasError)__send('ready',{width:window.width,height:window.height});},120);});
   <\/script><script src="${escapeHTML(p5url)}" onerror="__send('error',{message:'The p5.js library could not load. Reload this page and try again.'})"><\/script><script>
@@ -130,14 +131,37 @@ function runSketch(){
   saveDraft();runId++;runtimeError=false;runReady=false;
   for(const request of pendingChecks.values()){clearTimeout(request.timer);request.resolve(null);}pendingChecks.clear();
   $('#runtime-message').classList.remove('visible');$('#runtime-message').textContent='';$('#run-status').textContent='Starting…';
-  const code=$('#code-editor').value;
-  try {new Function(code);}catch(e){showError(e.message);return;}
-  $('#sketch-frame').srcdoc=frameDocument(code,runId);
+  // Syntax errors are reported by the sandbox, which knows the real line number.
+  $('#sketch-frame').srcdoc=frameDocument($('#code-editor').value,runId);
 }
-function showError(message){runtimeError=true;runReady=false;$('#run-status').textContent='Let’s fix this';$('#runtime-message').textContent=`A clue from JavaScript: ${message}\nCheck your spelling, brackets, and quotes, then try Run code again.`;$('#runtime-message').classList.add('visible');}
+// Turn common JavaScript errors into hints a young coder can act on.
+function friendlyError(message){
+  const m=String(message).replace(/^Uncaught\s+/,'').replace(/^\w*Error:\s*/,'').replace(/^Failed to execute '\w+' on '\w+':\s*/,'');
+  let r;
+  if((r=m.match(/^(?:Can't find variable: )?([\w$]+)(?: is not defined)?$/))&&/not defined|Can't find variable/.test(m))return `JavaScript doesn’t know the word “${r[1]}”. Check its spelling and capital letters: ballSize and ballsize are different words to a computer. If it’s a new variable, create it first with let.`;
+  if((r=m.match(/^(.+?) is not a function/)))return `“${r[1]}” isn’t a function JavaScript knows. Check the spelling of the name just before the ( bracket.`;
+  if((r=m.match(/Identifier '(.+?)' has already been declared|redeclaration of \w+ (\S+)/)))return `You created “${r[1]||r[2]}” with let more than once. Use let only the first time. After that, just write ${r[1]||r[2]} = …`;
+  if(/Unexpected end of input|end of script|Unexpected EOF/i.test(m))return 'Your code ended too soon. A closing } or ) is probably missing. Every { needs a matching }, and every ( needs a ).';
+  if(/missing \) after argument list/i.test(m))return 'A ) is missing, or two values are missing a comma between them, like circle(240 160, 80).';
+  if(/Invalid or unexpected token|unterminated string|Unterminated string/i.test(m))return 'A quote may be missing. Every \' needs a partner, like \'#ec693f\'.';
+  if(/Unexpected (number|string|identifier)/i.test(m))return 'Two things are touching that need something between them. Look for a missing comma, bracket, or + sign.';
+  if(/Unexpected token|expected expression|Unexpected keyword/i.test(m))return 'Something is in the wrong place, like an extra or missing bracket ( ) { } [ ], comma, or semicolon.';
+  if((r=m.match(/Cannot read propert(?:y|ies) of (?:undefined|null)(?: \(reading '(.+?)'\))?|(?:undefined|null) is not an object/)))return `You asked for ${r[1]?`.${r[1]}`:'a property'} of something that doesn’t exist yet. Check the spelling, and remember that array indexes start at 0.`;
+  if(/Maximum call stack|too much recursion/i.test(m))return 'A function keeps calling itself forever. Make sure a function doesn’t call its own name.';
+  if(/Assignment to constant/i.test(m))return 'You tried to change a const. Use let for values that change.';
+  return '';
+}
+function showError(message,line,source=''){
+  runtimeError=true;runReady=false;$('#run-status').textContent='Let’s fix this';
+  const clean=String(message).replace(/^Uncaught\s+/,'').replace(/Failed to execute '\w+' on '\w+':\s*/,'');
+  const hint=friendlyError(message);
+  const where=line>0&&!/p5(\.min)?\.js/.test(source)?`Look near line ${line}.\n`:'';
+  $('#runtime-message').textContent=`${hint?`💡 ${hint}\n`:''}${where}A clue from JavaScript: ${clean}${hint?'':'\nCheck your spelling, brackets, and quotes, then try Run code again.'}`;
+  $('#runtime-message').classList.add('visible');
+}
 window.addEventListener('message',e=>{
   const d=e.data;if(e.source!==$('#sketch-frame').contentWindow||d?.source!=='brick-sketch'||d.runId!==runId)return;
-  if(d.type==='error')showError(d.message);
+  if(d.type==='error')showError(d.message,d.line,d.source);
   if(d.type==='ready'&&!runtimeError){runReady=true;$('#run-status').textContent='Running';$('#canvas-size').textContent=`${d.width || 480} × ${d.height || 320}`;}
   if(d.type==='checks'){const req=pendingChecks.get(d.request);if(req){clearTimeout(req.timer);pendingChecks.delete(d.request);req.resolve(d.results);}}
 });
@@ -152,6 +176,8 @@ async function checkExercise(i){
   if(current!==chapter)return;
   let response=null;if(runReady&&!runtimeError&&runId===expectedRun)response=await inspect([lesson.exercises[i].test]);
   if(current!==chapter)return;
+  // Some checks play a few test frames. Restart so the learner sees a fresh sketch.
+  if(response&&/\b(draw|mousePressed|keyPressed|burst)\(/.test(lesson.exercises[i].test))runSketch();
   button.disabled=false;button.innerHTML='Check my code <span>→</span>';
   if(response?.[0]){
     if(!state.passed[lesson.id])state.passed[lesson.id]=[false,false,false];state.passed[lesson.id][i]=true;persist();
