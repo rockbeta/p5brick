@@ -2,10 +2,14 @@
   "name": "p5brick",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@11.25.0",
   "description": "A 26-chapter p5.js coding course for young creators",
   "scripts": {
     "start": "python3 -m http.server 4173 --directory dist",
-    "check": "node --check dist/course.js && node --check dist/app.js && node --check dist/voice.js && node --check dist/pico.mjs",
-    "test": "node qa/course.test.cjs && node qa/playback.test.cjs && node qa/voice.test.mjs"
+    "check": "node --check dist/course.js && node --check dist/app.js && node --check dist/voice.js && node --check dist/kokoro.mjs && node --check dist/kokoro-worker.mjs",
+    "test": "node qa/course.test.cjs && node qa/playback.test.cjs && node qa/worker.test.mjs && node qa/voice.test.mjs"
+  },
+  "devDependencies": {
+    "kokoro-js": "1.2.1"
   }
 }

@@ -4,7 +4,7 @@ const vm = require('node:vm');
 
 // Boot the real app with a deterministic clock and audio-output stand-in.
 // No browser, voice service, packages, or network access is needed in CI.
-function app({voiceDelay=1,voiceFails=false}={}){
+function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   let now=0,serial=0,frame;
   const timers=new Map(),elements=new Map(),speechCalls=[];
   const canvas=new Proxy({}, {get:()=>()=>{},set:()=>true});
@@ -25,10 +25,11 @@ function app({voiceDelay=1,voiceFails=false}={}){
   class Narrator {
     constructor(){this.generation=0;this.source=null;}
     stop(){this.generation++;this.source=null;synth.speaking=false;}
+    prefetch(){}
     play(text,options){
       if(voiceFails)throw new Error('Audio unavailable');
       const generation=this.generation,call={text,offset:options.offset};
-      const start=()=>{if(generation!==this.generation)return;this.source=call;synth.speaking=true;speechCalls.push(call);options.onstart();};
+      const start=()=>{if(generation!==this.generation)return;this.source=call;synth.speaking=true;speechCalls.push(call);options.onstart({duration:voiceDuration});};
       if(voiceDelay){const id=++serial;timers.set(id,{fn:start,at:now+voiceDelay});}else start();
       return Promise.resolve(true);
     }
@@ -113,4 +114,9 @@ const failed=app({voiceFails:true});failed.play();assert.equal(failed.run('playe
 assert.match(failed.element('#voice-note').textContent,/Press Play to retry/);
 const midpoint=app();midpoint.play();midpoint.seek(5);midpoint.advance(60);
 assert.equal(midpoint.speechCalls.at(-1).offset,.5,'Seeking must use the corresponding real audio position');
+const longVoice=app({voiceDuration:20});longVoice.play();
+for(let i=0;i<100;i++)longVoice.advance(100);
+assert.equal(longVoice.speechCalls.length,1,'A long sentence must finish naturally before the next segment');
+for(let i=0;i<105;i++)longVoice.advance(100);
+assert.equal(longVoice.speechCalls.length,2,'The next segment must play after the long sentence finishes');
 console.log('PASS: three full narrated runs; stable controls; pause/resume; restart; seek; rapid clicks; mute; loading; audio failure; chapter changes.');

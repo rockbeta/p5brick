@@ -13,7 +13,7 @@ try { saved = JSON.parse(localStorage.getItem('brick-by-brick-v1') || '{}') || {
 const state = {drafts:saved.drafts || {}, passed:saved.passed || {}, muted:!!saved.muted, learnerName:normalizeLearnerName(saved.learnerName), namePromptSeen:!!saved.namePromptSeen};
 let current=0, expanded=new Set([0]), runId=0, runtimeError=false, runReady=false, draftTimer;
 let pendingChecks = new Map(), checkSerial=0;
-const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,voiceLoading:false};
+const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,voiceLoading:false,segmentSeconds:10};
 const narrator=new LocalNarrator();
 function persist() {
   try {localStorage.setItem('brick-by-brick-v1',JSON.stringify(state));} catch {storageAvailable=false;}
@@ -173,20 +173,27 @@ function speakSegment(){
   stopNarration();if(state.muted||!player.playing)return;
   const generation=player.speechGeneration;
   const sentence=narrationText(Math.min(5,Math.floor(player.time/10)));
-  player.voiceLoading=true;$('#voice-note').textContent='Preparing narration…';
+  player.voiceLoading=true;$('#voice-note').textContent='Preparing Kokoro narration…';
   const failed=()=>{
     if(generation!==player.speechGeneration)return;
     player.playing=false;stopNarration();updatePlayer();
     $('#voice-note').textContent='Voice could not start. Press Play to retry · Captions are available';
   };
-  player.speechTimer=setTimeout(failed,10000);
+  player.speechTimer=setTimeout(failed,180000);
   try{
     // play() unlocks Web Audio synchronously in this click, then renders speech.
-    narrator.play(sentence,{offset:(player.time%10)/10,onstart:()=>{
+    narrator.play(sentence,{offset:(player.time%10)/10,onprogress:message=>{
+      if(generation!==player.speechGeneration||!player.voiceLoading)return;
+      $('#voice-note').textContent=message;
+      clearTimeout(player.speechTimer);player.speechTimer=setTimeout(failed,180000);
+    },onstart:(audio={})=>{
       if(generation!==player.speechGeneration)return;
       clearTimeout(player.speechTimer);player.speechTimer=null;
       player.voiceLoading=false;player.last=performance.now();
-      $('#voice-note').textContent='Voice on · Captions always available';
+      player.segmentSeconds=Math.max(10,audio.duration||10);
+      $('#voice-note').textContent='Kokoro · Heart voice · Captions always available';
+      const next=Math.floor(player.time/10)+1;
+      if(next<6)narrator.prefetch(narrationText(next));
     }}).catch(failed);
   }catch{failed();}
 }
@@ -292,7 +299,7 @@ function drawConcept(now){
 }
 function animationFrame(now){
   if(player.playing&&!player.voiceLoading){
-    const delta=Math.max(0,Math.min((now-player.last)/1000,.2));player.time=Math.min(60,player.time+delta);
+    const delta=Math.max(0,Math.min((now-player.last)/1000,.2))*10/player.segmentSeconds;player.time=Math.min(60,player.time+delta);
     const segmentChanged=Math.min(5,Math.floor(player.time/10))!==player.segment;
     if(player.time>=60){player.playing=false;stopNarration();if(!state.muted)$('#voice-note').textContent='Ready to replay · Press Play to listen again';}
     updatePlayer();

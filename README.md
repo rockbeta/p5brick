@@ -12,7 +12,7 @@ Each chapter has a 60-second canvas animation, browser-synthesized English narra
 
 Run `python3 -m http.server 4173 --directory dist` from this directory and visit `http://localhost:4173`.
 
-No build, package installation, API keys, or server database is required. p5.js 1.11.11 is vendored in `dist/vendor/p5.min.js` with its license header. Fonts optionally load from Google Fonts; system fallbacks are provided.
+No build, API keys, or server database is required to serve the site. Verification dependencies are needed only for development and CI. p5.js 1.11.11 is vendored in `dist/vendor/p5.min.js` with its license header. Fonts optionally load from Google Fonts; system fallbacks are provided.
 
 ## GitHub Pages deployment
 
@@ -20,7 +20,7 @@ GitHub Pages is configured to use **GitHub Actions**. Every push to `main` runs 
 
 The site uses relative asset paths and hash-based chapter links, so it works at the `/p5brick/` project URL without a build-time base-path setting. The published site is public and does not require ChatGPT or GitHub sign-in. Drafts and progress stay in the current browser; they are not synced between devices or shared with the repository.
 
-Run `npm run check` and `npm test` to verify changes locally. No dependency installation is needed. Deployment details follow the official [GitHub Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+Run `pnpm install --frozen-lockfile --ignore-scripts`, then `pnpm run check` and `pnpm test` to verify changes locally. The real voice smoke test reads the checked-in model files and does not download another model. Deployment details follow the official [GitHub Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 
 ## Edit the course
 
@@ -28,9 +28,13 @@ Run `npm run check` and `npm test` to verify changes locally. No dependency inst
 - `dist/app.js`: course navigation, syntax highlighting, sandbox runner, exercise feedback, local progress, and narrated concept diagrams.
 - `dist/styles.css`: responsive layout, design system, and keyboard focus styles.
 
-The one-minute explanations generate speech locally using the bundled Apache-licensed SVOX Pico WebAssembly engine and its English voice data (approximately 2.6 MB total). Web Audio plays the resulting speech samples. No OS speech service, cloud API, or server is required. Captions work independently, and narration starts only when the learner presses Play.
+The explanations use **kokoro-js 1.2.1**, the latest official stable JavaScript package checked for this implementation, with the current official stable English model **Kokoro-82M v1.0**, the quantized `q8` model, and the **Heart (`af_heart`)** voice. The v1.1 model is Chinese-specific, rather than a newer English release. Package and model versions are separate.
 
-Playback supports repeated replay, pause, restart, seeking, and mute. Pausing freezes the animation and stops the audio source; resuming starts at the corresponding sample position. While voice assets load, the animation waits rather than running silently ahead. The verification suite renders all 156 narration segments into actual non-silent speech, checks the audio adapter, and exercises three full simulated lessons plus loading, cancellation, and replay.
+Speech is generated at 24 kHz in a Web Worker. The model, voice, JavaScript, and exactly matching ONNX WebAssembly runtime are hosted with the site. The first voice load is approximately **120 MB**; the browser caches it for subsequent visits. No OS speech service, cloud speech API, or server is required. Names and narration stay on the learner's device. Model provenance and SHA-256 checksums are in `dist/models/kokoro/manifest.json`; third-party licenses are included with the assets.
+
+Playback supports repeated replay, pause, restart, seeking, and mute. Pausing stops the audio source; resuming uses its sample position. Loading leaves the editor and controls responsive. The next sentence is prepared while the current sentence plays. Finished speech is played at its natural pitch and speed. Longer sentences are allowed to finish, so an explainer can run slightly beyond one minute rather than cutting off or speeding up a voice.
+
+Verification checks all curriculum exercises, simulates three complete playback cycles, validates every model file's checksum, generates representative real Kokoro speech and personalized greetings, and tests actual audio buffers plus cancellation. The browser integration is also checked for non-silent Web Audio output, rather than relying on a speech-service status flag.
 
 On a first visit, learners can enter a first name or nickname. Tutorial narration and captions greet them by name at the beginning of each chapter. The name is stored with their existing browser-local progress and can be changed using the name button in the top bar. Choosing **Maybe later** continues without a name and dismisses the first-visit prompt. Names and spoken text stay in the browser and are never sent to a speech service.
 
