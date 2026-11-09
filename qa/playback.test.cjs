@@ -113,8 +113,8 @@ assert.equal(loading.element('#narration-loading').hidden,true,'The warm-up must
 loading.element('#demo-play').click();loading.advance(500);
 assert.equal(loading.element('#narration-loading').hidden,false,'The warm-up must appear while narration loads');
 assert.equal(loading.element('#concept-canvas').getAttribute('aria-hidden'),'true');
-loading.speechRequests.at(-1).onprogress('Downloading Kokoro voice… 50%');
-assert.equal(loading.element('#narration-loading-message').textContent,'Downloading Kokoro voice… 50%');
+loading.speechRequests.at(-1).onprogress('Preparing the course… 50%');
+assert.equal(loading.element('#narration-loading-message').textContent,'Preparing the course… 50%');
 assert.equal(loading.run('player.time'),0,'The lesson timeline must wait for real audio preparation');
 loading.advance(600);assert.equal(loading.run('player.voiceLoading'),false);assert.equal(loading.synth.speaking,true);
 assert.equal(loading.element('#narration-loading').hidden,true,'Speech startup must reveal the lesson');

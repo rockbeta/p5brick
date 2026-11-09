@@ -10,7 +10,7 @@ export function createKokoroVoice({onprogress=()=>{}}={}){
   // This timer runs on the page, so it can terminate a worker stuck in WASM.
   const watch=stage=>{
     clearTimeout(timer);
-    timer=setTimeout(()=>fail(Object.assign(new Error('Kokoro narration timed out'),{code:'VOICE_TIMEOUT'})),stage==='generating'?60000:180000);
+    timer=setTimeout(()=>fail(Object.assign(new Error('Narration preparation timed out'),{code:'VOICE_TIMEOUT'})),stage==='generating'?60000:180000);
   };
   worker.onmessage=({data})=>{
     if(failed)return;
@@ -20,8 +20,8 @@ export function createKokoroVoice({onprogress=()=>{}}={}){
     if(data.type==='audio')request.resolve({samples:data.samples,sampleRate:data.sampleRate});
     else request.reject(new Error(data.message));
   };
-  worker.onerror=event=>fail(new Error(event.message||'The Kokoro worker could not load'));
-  worker.onmessageerror=()=>fail(new Error('The Kokoro worker could not return audio'));
+  worker.onerror=event=>fail(new Error(event.message||'Narration could not be prepared'));
+  worker.onmessageerror=()=>fail(new Error('Narration audio is unavailable'));
   return {dispose(){fail(new Error('The voice worker was reset'));},synthesize(text){return new Promise((resolve,reject)=>{
     if(failed){reject(failed);return;}
     const id=++serial;pending.set(id,{resolve,reject});

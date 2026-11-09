@@ -190,7 +190,7 @@ async function checkExercise(i){
   }
 }
 
-function setVoiceLoading(loading,message='Preparing Kokoro narration…'){
+function setVoiceLoading(loading,message='Preparing the course…'){
   player.voiceLoading=loading;
   $('#narration-loading').hidden=!loading;
   $('#concept-canvas').setAttribute('aria-hidden',String(loading));
@@ -226,7 +226,7 @@ function speakSegment(){
       clearTimeout(player.speechTimer);player.speechTimer=null;
       setVoiceLoading(false);player.last=performance.now();
       player.segmentSeconds=Math.max(10,audio.duration||10);
-      $('#voice-note').textContent='Kokoro · Heart voice · Captions always available';
+      $('#voice-note').textContent='Narration on · Captions always available';
       const next=Math.floor(player.time/10)+1;
       if(next<6)narrator.prefetch(narrationText(next));
     }}).catch(failed);
