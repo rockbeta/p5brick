@@ -25,10 +25,11 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   class Narrator {
     constructor(){this.generation=0;this.source=null;}
     stop(){this.generation++;this.source=null;synth.speaking=false;}
-    play(text,options){
+    preload(){return Promise.resolve();}
+    play(clip,options){
       if(voiceFails)throw new Error('Audio unavailable');
       speechRequests.push(options);
-      const generation=this.generation,call={text,offset:options.offset};
+      const generation=this.generation,call={text:clip.text,clip,offset:options.offset};
       const start=()=>{if(generation!==this.generation)return;this.source=call;synth.speaking=true;speechCalls.push(call);options.onstart({duration:voiceDuration});};
       if(voiceDelay){const id=++serial;timers.set(id,{fn:start,at:now+voiceDelay});}else start();
       return Promise.resolve(true);
@@ -43,6 +44,7 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   };
   context.window=context;vm.createContext(context);
   vm.runInContext(fs.readFileSync('dist/course.js','utf8'),context);
+  vm.runInContext(fs.readFileSync('dist/narration.js','utf8'),context);
   vm.runInContext(fs.readFileSync('dist/app.js','utf8'),context);
   const run=code=>vm.runInContext(code,context);
   // Canvas geometry has separate course checks; these tests isolate playback.
@@ -64,8 +66,8 @@ repeated.seek(60);repeated.speechCalls.length=0;
 for(let cycle=0;cycle<3;cycle++){
   const before=repeated.speechCalls.length;repeated.play();
   assert.equal(repeated.speechCalls.length,before+1,'Play/replay must queue exactly one opening sentence');
-  assert.equal(repeated.speechRequests.at(-1).prepare.length,6,'Playback must prepare the full lesson before the opening sentence');
-  assert.match(repeated.speechCalls.at(-1).text,/Welcome, Alex!/);
+  assert.equal(repeated.speechRequests.at(-1).prepare.length,6,'Playback must buffer the full lesson before the opening sentence');
+  assert.match(repeated.speechCalls.at(-1).text,/Welcome!/);
   repeated.finish();
   assert.equal(repeated.speechCalls.length,before+6,'Each complete run must speak exactly six segments');
   assert.equal(repeated.run('player.playing'),false);
@@ -74,6 +76,11 @@ for(let cycle=0;cycle<3;cycle++){
 }
 
 const controls=app();controls.play();
+assert.equal(controls.element('#narration-loading').hidden,true,'Fast cached playback must not flash the warm-up');
+const profile=app();profile.run("state.learnerName='Mia';renderPersonalization();");
+assert.doesNotMatch(profile.run('narrationText(0)'),/Mia|Alex|\{name\}/);
+assert.equal(profile.element('#exercise-greeting').textContent,'Your turn, Mia');
+
 const playWrites=controls.element('#demo-play').htmlWrites,muteWrites=controls.element('#voice-toggle').htmlWrites;
 for(let i=0;i<25;i++)controls.advance(16);
 assert.equal(controls.element('#demo-play').htmlWrites,playWrites,'Frames must preserve the pause icon click target');
@@ -114,13 +121,15 @@ assert.equal(loading.element('#narration-loading').hidden,true,'The warm-up must
 loading.element('#demo-play').click();loading.advance(500);
 assert.equal(loading.element('#narration-loading').hidden,false,'The warm-up must appear while narration loads');
 assert.equal(loading.element('#concept-canvas').getAttribute('aria-hidden'),'true');
-loading.speechRequests.at(-1).onprogress('Preparing the course… 50%');
-assert.equal(loading.element('#narration-loading-message').textContent,'Preparing the course… 50%');
+loading.speechRequests.at(-1).onprogress('Loading the lesson… 50%');
+assert.equal(loading.element('#narration-loading-message').textContent,'Loading the lesson… 50%');
 assert.equal(loading.run('player.time'),0,'The lesson timeline must wait for real audio preparation');
 loading.advance(600);assert.equal(loading.run('player.voiceLoading'),false);assert.equal(loading.synth.speaking,true);
 assert.equal(loading.element('#narration-loading').hidden,true,'Speech startup must reveal the lesson');
 assert.equal(loading.element('#concept-canvas').getAttribute('aria-hidden'),'false');
 loading.seek(10);
+assert.equal(loading.element('#narration-loading').hidden,true,'A short audio load must not flash the warm-up');
+loading.advance(250);
 assert.equal(loading.element('#narration-loading').hidden,false,'Later uncached sentences must also show the warm-up');
 assert.equal(loading.run('player.time'),10);
 for(const cancel of [app=>app.element('#demo-play').click(),app=>app.element('#voice-toggle').click(),app=>app.element('#continue-captions').click(),app=>app.run('loadChapter(1)'),app=>app.seek(60)]){
@@ -136,7 +145,7 @@ const captions=app({voiceDelay:1000});captions.element('#demo-play').click();cap
 assert.equal(captions.run('player.playing'),true,'Continue with captions must keep the lesson playing');
 assert.equal(captions.run('state.muted'),true);assert.ok(captions.run('player.time')>0);
 assert.notEqual(captions.element('#demo-caption').textContent,'');
-const timeout=app({voiceDelay:200000});timeout.element('#demo-play').click();timeout.advance(180001);
+const timeout=app({voiceDelay:40000});timeout.element('#demo-play').click();timeout.advance(30001);
 assert.equal(timeout.element('#narration-loading').hidden,true,'A timeout must dismiss the warm-up so Play can retry');
 assert.match(timeout.element('#voice-note').textContent,/Press Play to retry/);
 const failed=app({voiceFails:true});failed.play();assert.equal(failed.run('player.playing'),false);

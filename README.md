@@ -6,7 +6,7 @@ A complete, buildless p5.js learning website for young creators. 26 chapters bui
 
 **Repository:** [rockbeta/p5brick](https://github.com/rockbeta/p5brick)
 
-Each chapter has a 60-second canvas animation, browser-synthesized English narration, captions, an editable JavaScript sketch, an isolated live p5.js preview, and three exercises with hints and running-sketch checks. Progress and drafts are stored in the current browser. Lessons are freely navigable and have distinct hash URLs.
+Each chapter has a 60-second canvas animation, prerecorded English narration, captions, an editable JavaScript sketch, an isolated live p5.js preview, and three exercises with hints and running-sketch checks. Progress and drafts are stored in the current browser. Lessons are freely navigable and have distinct hash URLs.
 
 ## Run locally
 
@@ -16,29 +16,29 @@ No build, API keys, or server database is required to serve the site. Verificati
 
 ## GitHub Pages deployment
 
-GitHub Pages is configured to use **GitHub Actions**. Every push to `main` runs the JavaScript checks and curriculum verification suite, then publishes the contents of `dist/`. Browser asset URLs include the release's commit SHA so browsers fetch matching JavaScript, CSS, and narration worker versions. You can also run **Deploy to GitHub Pages** manually from the repository's Actions tab.
+GitHub Pages is configured to use **GitHub Actions**. Every push to `main` runs the JavaScript checks and curriculum verification suite, then publishes the contents of `dist/`. Browser script and CSS URLs include the release's commit SHA, and audio filenames include content hashes, so browsers fetch matching versions. You can also run **Deploy to GitHub Pages** manually from the repository's Actions tab.
 
 The site uses relative asset paths and hash-based chapter links, so it works at the `/p5brick/` project URL without a build-time base-path setting. The published site is public and does not require ChatGPT or GitHub sign-in. Drafts and progress stay in the current browser; they are not synced between devices or shared with the repository.
 
-Run `pnpm install --frozen-lockfile --ignore-scripts`, then `pnpm run check` and `pnpm test` to verify changes locally. The real voice smoke test reads the checked-in model files and does not download another model. Deployment details follow the official [GitHub Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+Run `pnpm install --frozen-lockfile --ignore-scripts`, then `pnpm run check` and `pnpm test` to verify changes locally. The narration checks read the checked-in recordings and do not generate speech or download a model. Deployment details follow the official [GitHub Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 
 ## Edit the course
 
 - `dist/course.js`: all lesson copy, six 10-second narration segments per lesson, starter sketches, and 78 exercise definitions. Exercise test expressions inspect actual values and recorded p5 drawing calls inside the sandbox.
 - `dist/app.js`: course navigation, syntax highlighting, sandbox runner, exercise feedback, local progress, and narrated concept diagrams.
 - `dist/styles.css`: responsive layout, design system, and keyboard focus styles.
+- `dist/narration.js` and `dist/audio/narration/`: generated recording metadata and 156 small MP3 recordings.
+- `tools/generate-narration.mjs`: offline narration generator. After editing lesson scripts, run `pnpm narrate` to regenerate changed recordings.
 
-The explanations use **kokoro-js 1.2.1**, the latest official stable JavaScript package checked for this implementation, with the current official stable English model **Kokoro-82M v1.0**, the quantized `q8` model, and the **Heart (`af_heart`)** voice. The v1.1 model is Chinese-specific, rather than a newer English release. Package and model versions are separate.
+The narration is **prerecorded**, with one shared script for every learner. Captions use those exact scripts. The browser preloads only the current lesson's six small MP3 files while the learner reads, then plays them through Web Audio at their natural pitch and speed. Playback does not load a speech model, start a speech worker, or generate audio on the learner's device.
 
-Speech is generated at 24 kHz in a Web Worker. The model, voice, JavaScript, and exactly matching ONNX WebAssembly runtime are hosted with the site. The first voice load is approximately **120 MB**; the browser caches it for subsequent visits. No OS speech service, cloud speech API, or server is required. Names and narration stay on the learner's device. Model provenance and SHA-256 checksums are in `dist/models/kokoro/manifest.json`; third-party licenses are included with the assets.
+Recordings are mono, 24 kHz, 64 kbps MP3s. They are generated offline with **kokoro-js 1.2.1**, the English **Kokoro-82M v1.0** quantized `q8` model, and the **Heart (`af_heart`)** voice. These names are development details and do not appear in the learner interface. The development model and its licenses/checksums are in `tools/models/kokoro/`; those files are outside the published site.
 
-Playback supports repeated replay, pause, restart, seeking, and mute. Pausing stops the audio source; resuming uses its sample position. Loading leaves the editor and controls responsive. Before playback begins, all remaining parts of the current lesson are generated and cached, so slower devices wait once instead of interrupting playback between sentences. Preparation shows how many parts are ready and stops queuing more work when paused or canceled. Finished speech is played at its natural pitch and speed. Longer sentences are allowed to finish, so an explainer can run slightly beyond one minute rather than cutting off or speeding up a voice.
+To regenerate recordings, install the pinned development dependencies and ensure `ffmpeg` is on your PATH, then run `pnpm narrate`. The generator uses the local model, validates non-silent samples, and reuses recordings when their source script and voice settings match. Generated MP3 files and their metadata are committed together. `pnpm test` verifies every recording's source fingerprint, content hash, MPEG frames, duration, and matching caption, so a script edit cannot silently ship with stale audio.
 
-While narration downloads or renders, the explainer shows a playful brick-breaker warm-up with live voice-loading feedback and a **Continue with captions** option. The lesson timeline waits for speech to start, then the lesson diagram returns automatically. The warm-up uses local SVG and CSS, adds no downloads, and respects reduced-motion preferences. A synthesis job that exceeds 60 seconds terminates its worker so Play can retry with a fresh instance; downloads allow up to three minutes without progress.
+Playback supports replay, pause, restart, seeking, and mute. The current lesson's downloaded and decoded recordings are cached for smooth transitions and replay. Slow network requests show the brick-breaker warm-up after 200 ms, with a **Continue with captions** option; failed loads can be retried. No model preparation is needed. Longer sentences finish naturally, so an explainer can run slightly beyond one minute rather than cutting off or speeding up a voice.
 
-Verification checks all curriculum exercises, simulates three complete playback cycles, validates every model file's checksum, generates representative real Kokoro speech and personalized greetings, and tests actual audio buffers plus cancellation. The browser integration is also checked for non-silent Web Audio output, rather than relying on a speech-service status flag.
-
-On a first visit, learners can enter a first name or nickname. Tutorial narration and captions greet them by name at the beginning of each chapter. The name is stored with their existing browser-local progress and can be changed using the name button in the top bar. Choosing **Maybe later** continues without a name and dismisses the first-visit prompt. Names and spoken text stay in the browser and are never sent to a speech service.
+On a first visit, learners can enter a first name or nickname for the on-page practice greeting. Spoken narration and captions are shared and do not include the learner's name. The name stays in browser-local progress and can be changed with the name button. Choosing **Maybe later** continues without a name and dismisses the first-visit prompt. Names are never sent to an audio service.
 
 ## Learner controls
 

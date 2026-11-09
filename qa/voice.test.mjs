@@ -1,60 +1,78 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createHash} from 'node:crypto';
 import vm from 'node:vm';
-import {createRequire} from 'node:module';
-import {KOKORO} from '../dist/kokoro-config.mjs';
-const require=createRequire(import.meta.url);
-const {KokoroTTS}=require('kokoro-js');
-const kokoroRequire=createRequire(require.resolve('kokoro-js'));
-const {env}=kokoroRequire('@huggingface/transformers');
-env.allowRemoteModels=false;env.localModelPath=new URL('../dist/models/',import.meta.url).pathname;
-const manifest=JSON.parse(readFileSync(new URL('../dist/models/kokoro/manifest.json',import.meta.url)));
-assert.equal(manifest.model,KOKORO.modelId);
-for(const [file,entry] of Object.entries(manifest.files)){const bytes=readFileSync(new URL('../dist/models/kokoro/'+file,import.meta.url));assert.equal(bytes.length,entry.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),entry.sha256);}
-const model=await KokoroTTS.from_pretrained('kokoro',{device:'cpu',dtype:KOKORO.dtype});
-const voice={async synthesize(text){const audio=await model.generate(text,{voice:KOKORO.voice,speed:KOKORO.speed});return {samples:audio.audio,sampleRate:audio.sampling_rate};}};
-const curriculum=vm.createContext({});vm.runInContext(readFileSync(new URL('../dist/course.js',import.meta.url),'utf8'),curriculum);
-const lessons=vm.runInContext('COURSE',curriculum);
-let rendered=0;
-const selected=[lessons[0].story[0],lessons[3].story[2],lessons[8].story[0],lessons[16].story[0],lessons[20].story[3],lessons[25].story[5]];
-for(const sentence of selected){
-  const audio=await voice.synthesize(sentence.replaceAll('{name}','Alex'));
-  assert.equal(audio.sampleRate,24000);assert.ok(audio.samples.length>24000,'Every sentence must produce real speech');
-  let energy=0;for(const value of audio.samples){assert.ok(Number.isFinite(value));energy+=value*value;}
-  assert.ok(Math.sqrt(energy/audio.samples.length)>.001,'Speech must contain non-silent samples, not just queued events');rendered++;
+const code=readFileSync(new URL('../dist/voice.js',import.meta.url),'utf8')+'\nLocalNarrator;';
+const clips=Array.from({length:6},(_,i)=>({src:`audio/part-${i+1}.mp3`,text:`Part ${i+1}`}));
+const bytes=()=>new Uint8Array([1,2,3,4]).buffer;
+const response=()=>({ok:true,arrayBuffer:async()=>bytes()});
+const flush=async()=>{for(let i=0;i<50;i++)await Promise.resolve();};
+function harness({fetchAudio=async()=>response(),decodeAudio}={}){
+  const downloads=[],timers=new Map();let serial=0,decoded=0;
+  class AudioContext{
+    constructor(){this.state='suspended';this.destination={};this.started=[];}
+    resume(){this.state='running';return Promise.resolve();}
+    createGain(){return {connect(){}};}
+    async decodeAudioData(data){decoded++;if(decodeAudio)return decodeAudio(data);const samples=new Uint8Array(data).slice();structuredClone(data,{transfer:[data]});return {duration:12,samples};}
+    createBufferSource(){const context=this;return {playbackRate:{value:1},connect(){},disconnect(){},stop(){this.stopped=true;},start(when,position){this.position=position;context.started.push(this);}};}
+  }
+  const LocalNarrator=vm.runInNewContext(code,{window:{AudioContext},AbortController,
+    fetch(url,options){downloads.push(url);return fetchAudio(url,options);},
+    setTimeout(fn){const id=++serial;timers.set(id,fn);return id;},clearTimeout(id){timers.delete(id);}
+  });
+  return {narrator:new LocalNarrator(),downloads,timers,decoded:()=>decoded};
 }
-assert.ok((await voice.synthesize('Welcome, Léa!')).samples.length>16000);
+const ready=harness();
+await ready.narrator.preload(clips);
+assert.equal(ready.narrator.context,null,'Preloading must not create an audio context or play sound');
+assert.equal(ready.downloads.length,6);
+const play=ready.narrator.play(clips[0],{prepare:clips});
+assert.equal(ready.narrator.context.state,'running','Audio must unlock in the Play gesture');
+assert.equal(await play,true);
+assert.equal(ready.downloads.length,6);assert.equal(ready.decoded(),6);
+assert.equal(ready.narrator.source.playbackRate.value,1);
+assert.equal((await ready.narrator.load(clips[0])).byteLength,4,'Decoding must not detach the reusable download');
+const first=ready.narrator.source;ready.narrator.stop();assert.equal(first.stopped,true);
+await ready.narrator.play(clips[0],{offset:.5,prepare:clips});assert.equal(ready.narrator.source.position,6);
+for(let i=1;i<6;i++)await ready.narrator.play(clips[i],{prepare:clips.slice(i)});
+await ready.narrator.play(clips[0],{prepare:clips});
+assert.equal(ready.downloads.length,6,'Transitions and replay must reuse downloaded recordings');
+assert.equal(ready.decoded(),6,'Transitions and replay must reuse decoded audio');
+ready.narrator.stop();assert.equal(ready.timers.size,0);
 
-// Run the actual playback adapter against real synthesized samples.
-class AudioContext {
-  constructor(){this.state='suspended';this.destination={};this.started=[];}
-  resume(){this.state='running';return Promise.resolve();}
-  createGain(){return {connect(){},disconnect(){}};}
-  createBuffer(channels,length,sampleRate){return {duration:length/sampleRate,copyToChannel(samples){this.samples=samples;}};}
-  createBufferSource(){const context=this;return {playbackRate:{value:1},connect(){},disconnect(){},stop(){this.stopped=true;},start(when,position){this.position=position;context.started.push(this);}};}
-}
-const LocalNarrator=vm.runInNewContext(readFileSync(new URL('../dist/voice.js',import.meta.url),'utf8')+'\nLocalNarrator;',{window:{AudioContext},Promise,Map});
-const narrator=new LocalNarrator();narrator.ready=Promise.resolve(voice);
-const request=narrator.play('Welcome, Alex!');
-assert.equal(narrator.context.state,'running','Audio must be unlocked synchronously in the Play gesture');
-assert.equal(await request,true);const first=narrator.source;
-assert.ok(first.buffer.samples.some(sample=>Math.abs(sample)>.01));
-assert.equal(first.playbackRate.value,1,'Kokoro audio must keep its natural pitch and pacing');
-narrator.stop();assert.equal(first.stopped,true);
-await narrator.play('Welcome, Alex!',{offset:.5});assert.ok(narrator.source.position>0,'Resume must start at a real sample offset');
-narrator.stop();await narrator.play('Welcome, Alex!');assert.equal(narrator.source.position,0,'Replay must start from the beginning');
-let resolve;const waiting=new LocalNarrator();waiting.ready=new Promise(done=>resolve=done);
-const pending=waiting.play('Do not speak after Pause.');waiting.stop();resolve(voice);
-assert.equal(await pending,false);assert.equal(waiting.source,null,'Late synthesis completion must not play after Pause');
-// Errors from an old worker's queued requests must not discard a fresh retry.
-const rejects=[],broken={synthesize(){return new Promise((resolve,reject)=>rejects.push(reject));},dispose(){}};
-const recovering=new LocalNarrator();recovering.ready=Promise.resolve(broken);
-const firstError=assert.rejects(recovering.render(broken,'First failed request'),/timed out/);
-const queuedError=assert.rejects(recovering.render(broken,'Queued failed request'),/timed out/);
-await Promise.resolve();rejects[0](new Error('timed out'));await firstError;
-const fresh=Promise.resolve(voice);recovering.ready=fresh;
-rejects[1](new Error('timed out'));await queuedError;
-assert.equal(recovering.ready,fresh,'A stale rejection must preserve the new voice instance');
-assert.equal(await recovering.play('Welcome, Alex!'),true);recovering.stop();
-console.log(`PASS: ${rendered} real, non-silent Kokoro narrated sentences; personalized names; real audio buffers; synchronous audio unlock; stop, resume, replay, and canceled loading.`);
+const crowded=harness();
+for(const clip of [...clips.slice(0,2),...Array.from({length:10},(_,i)=>({src:`old-${i}.mp3`}))])await crowded.narrator.play(clip);
+await crowded.narrator.play(clips[0],{prepare:clips});
+const downloadCount=crowded.downloads.length,decodeCount=crowded.decoded();
+for(let i=0;i<6;i++)await crowded.narrator.play(clips[i],{prepare:clips.slice(i)});
+assert.equal(crowded.downloads.length,downloadCount);assert.equal(crowded.decoded(),decodeCount,'Cache eviction must retain the active lesson');
+crowded.narrator.stop();
+
+const waiting=[];const slow=harness({fetchAudio(){return new Promise(resolve=>waiting.push(resolve));}});
+const pending=slow.narrator.play(clips[0],{prepare:clips});await flush();
+assert.equal(waiting.length,6,'Recordings must load in parallel');
+assert.equal(slow.narrator.context.started.length,0,'The lesson must wait for its recordings');
+slow.narrator.stop();for(const resolve of waiting)resolve(response());
+assert.equal(await pending,false);assert.equal(slow.narrator.source,null,'Late downloads must never play after pause');
+assert.equal(await slow.narrator.play(clips[0],{prepare:clips}),true);slow.narrator.stop();
+assert.equal(slow.downloads.length,6,'Resuming must reuse completed downloads');
+
+let finishOld;const changed=harness({fetchAudio(url){return url==='old.mp3'?new Promise(resolve=>finishOld=resolve):Promise.resolve(response());}});
+const old=changed.narrator.play({src:'old.mp3'});await flush();
+await changed.narrator.play({src:'new.mp3'});const currentSource=changed.narrator.source;
+finishOld(response());assert.equal(await old,false);assert.equal(changed.narrator.source,currentSource);
+changed.narrator.stop();
+
+let attempts=0;const retry=harness({fetchAudio(){return ++attempts===1?Promise.resolve({ok:false}):Promise.resolve(response());}});
+await assert.rejects(retry.narrator.play(clips[0]),/could not load/);
+assert.equal(await retry.narrator.play(clips[0]),true);assert.equal(attempts,2);retry.narrator.stop();
+
+let corrupt=true;const decodeRetry=harness({decodeAudio(){if(corrupt){corrupt=false;throw new Error('Invalid audio');}return {duration:12};}});
+await assert.rejects(decodeRetry.narrator.play(clips[0]),/Invalid audio/);
+assert.equal(await decodeRetry.narrator.play(clips[0]),true);
+assert.equal(decodeRetry.downloads.length,2,'A failed decode must allow a fresh download');decodeRetry.narrator.stop();
+
+const stalled=harness({fetchAudio(url,{signal}){return new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(new Error('Audio load timed out'))));}});
+const timedOut=assert.rejects(stalled.narrator.play(clips[0]),/timed out/);await flush();
+for(const timer of [...stalled.timers.values()])timer();await timedOut;
+assert.equal(stalled.narrator.source,null);assert.equal(stalled.timers.size,0);
+console.log('PASS: recording preload, synchronous audio unlock, parallel decoding, cached transitions/replay, natural pacing, pause/resume/seek, chapter changes, download/decode retries, and timeouts.');

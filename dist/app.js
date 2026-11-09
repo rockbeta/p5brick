@@ -13,19 +13,14 @@ try { saved = JSON.parse(localStorage.getItem('brick-by-brick-v1') || '{}') || {
 const state = {drafts:saved.drafts || {}, passed:saved.passed || {}, muted:!!saved.muted, learnerName:normalizeLearnerName(saved.learnerName), namePromptSeen:!!saved.namePromptSeen};
 let current=0, expanded=new Set([0]), runId=0, runtimeError=false, runReady=false, draftTimer;
 let pendingChecks = new Map(), checkSerial=0;
-const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,voiceLoading:false,segmentSeconds:10};
+const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,voiceLoading:false,loadingTimer:null,segmentSeconds:10};
 const narrator=new LocalNarrator();
 function persist() {
   try {localStorage.setItem('brick-by-brick-v1',JSON.stringify(state));} catch {storageAvailable=false;}
   if(!storageAvailable) $('#save-status').textContent='Progress available this visit';
 }
 function normalizeLearnerName(value){return typeof value==='string'?value.replace(/[\u0000-\u001f\u007f]/g,' ').trim().replace(/\s+/g,' ').slice(0,32):'';}
-function narrationText(segment){
-  const text=COURSE[current].story[segment];
-  if(text.includes('{name}'))return text.replaceAll('{name}',state.learnerName || 'friend');
-  // Voice, captions, and accessible text use the same personalized sentence.
-  return segment===0&&state.learnerName?`${state.learnerName}, ${text.charAt(0).toLowerCase()}${text.slice(1)}`:text;
-}
+function narrationText(segment){return COURSE[current].story[segment];}
 function renderPersonalization(){
   stopNarration();
   $('#profile-label').textContent=state.learnerName || 'Your name';
@@ -78,6 +73,7 @@ function loadChapter(index,scroll=true){
   if($('#code-editor').value)saveDraft();
   current=Math.max(0,Math.min(COURSE.length-1,index));
   const l=COURSE[current],u=UNITS[l.unit];expanded.add(l.unit);
+  if(!state.muted)narrator.preload(NARRATION.chapters[l.id-1]).catch(()=>{});
   stopNarration();player.time=0;player.segment=-1;player.playing=false;updatePlayer();
   document.title=`${l.id}. ${l.short} · Brick by Brick`;
   $('#breadcrumb-chapter').textContent=`Chapter ${String(l.id).padStart(2,'0')}`;
@@ -190,13 +186,24 @@ async function checkExercise(i){
   }
 }
 
-function setVoiceLoading(loading,message='Preparing the course…'){
+function setVoiceLoading(loading,message='Loading the lesson…'){
   player.voiceLoading=loading;
-  $('#narration-loading').hidden=!loading;
-  $('#concept-canvas').setAttribute('aria-hidden',String(loading));
-  if(loading){
-    $('#narration-loading-message').textContent=message;
-    $('#voice-note').textContent=message;
+  if(!loading){
+    clearTimeout(player.loadingTimer);player.loadingTimer=null;
+    $('#narration-loading').hidden=true;
+    $('#concept-canvas').setAttribute('aria-hidden','false');
+    return;
+  }
+  $('#narration-loading-message').textContent=message;
+  $('#voice-note').textContent=message;
+  // Cached recordings start immediately; show the warm-up only on a slow load.
+  if(player.loadingTimer===null&&$('#narration-loading').hidden){
+    player.loadingTimer=setTimeout(()=>{
+      player.loadingTimer=null;
+      if(!player.voiceLoading)return;
+      $('#narration-loading').hidden=false;
+      $('#concept-canvas').setAttribute('aria-hidden','true');
+    },200);
   }
 }
 function stopNarration(){
@@ -207,21 +214,21 @@ function stopNarration(){
 function speakSegment(){
   stopNarration();if(state.muted||!player.playing)return;
   const generation=player.speechGeneration;
-  const segment=Math.min(5,Math.floor(player.time/10)),sentence=narrationText(segment);
-  const prepare=Array.from({length:6-segment},(_,i)=>narrationText(segment+i));
+  const segment=Math.min(5,Math.floor(player.time/10)),clips=NARRATION.chapters[current];
+  const clip=clips[segment],prepare=clips.slice(segment);
   setVoiceLoading(true);
-  const failed=error=>{
+  const failed=()=>{
     if(generation!==player.speechGeneration)return;
     player.playing=false;stopNarration();updatePlayer();
-    $('#voice-note').textContent=error?.code==='VOICE_TIMEOUT'?'Voice took too long. Press Play to retry · Mute for captions':'Voice could not start. Press Play to retry · Captions are available';
+    $('#voice-note').textContent='Audio could not load. Press Play to retry · Captions are available';
   };
-  player.speechTimer=setTimeout(failed,180000);
+  player.speechTimer=setTimeout(failed,30000);
   try{
-    // play() unlocks Web Audio synchronously in this click, then renders speech.
-    narrator.play(sentence,{offset:(player.time%10)/10,prepare,onprogress:message=>{
+    // play() unlocks audio synchronously, then decodes the small recordings.
+    narrator.play(clip,{offset:(player.time%10)/10,prepare,onprogress:message=>{
       if(generation!==player.speechGeneration||!player.voiceLoading)return;
       setVoiceLoading(true,message);
-      clearTimeout(player.speechTimer);player.speechTimer=setTimeout(failed,180000);
+      clearTimeout(player.speechTimer);player.speechTimer=setTimeout(failed,30000);
     },onstart:(audio={})=>{
       if(generation!==player.speechGeneration)return;
       clearTimeout(player.speechTimer);player.speechTimer=null;
