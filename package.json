@@ -1,0 +1,11 @@
+{
+  "name": "p5brick",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A 26-chapter p5.js coding course for young creators",
+  "scripts": {
+    "start": "python3 -m http.server 4173 --directory dist",
+    "check": "node --check dist/course.js && node --check dist/app.js",
+    "test": "node qa/course.test.cjs"
+  }
+}
