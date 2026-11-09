@@ -190,16 +190,25 @@ async function checkExercise(i){
   }
 }
 
+function setVoiceLoading(loading,message='Preparing Kokoro narration…'){
+  player.voiceLoading=loading;
+  $('#narration-loading').hidden=!loading;
+  $('#concept-canvas').setAttribute('aria-hidden',String(loading));
+  if(loading){
+    $('#narration-loading-message').textContent=message;
+    $('#voice-note').textContent=message;
+  }
+}
 function stopNarration(){
   player.speechGeneration++;
   clearTimeout(player.speechTimer);player.speechTimer=null;
-  player.voiceLoading=false;narrator.stop();
+  setVoiceLoading(false);narrator.stop();
 }
 function speakSegment(){
   stopNarration();if(state.muted||!player.playing)return;
   const generation=player.speechGeneration;
   const sentence=narrationText(Math.min(5,Math.floor(player.time/10)));
-  player.voiceLoading=true;$('#voice-note').textContent='Preparing Kokoro narration…';
+  setVoiceLoading(true);
   const failed=()=>{
     if(generation!==player.speechGeneration)return;
     player.playing=false;stopNarration();updatePlayer();
@@ -210,12 +219,12 @@ function speakSegment(){
     // play() unlocks Web Audio synchronously in this click, then renders speech.
     narrator.play(sentence,{offset:(player.time%10)/10,onprogress:message=>{
       if(generation!==player.speechGeneration||!player.voiceLoading)return;
-      $('#voice-note').textContent=message;
+      setVoiceLoading(true,message);
       clearTimeout(player.speechTimer);player.speechTimer=setTimeout(failed,180000);
     },onstart:(audio={})=>{
       if(generation!==player.speechGeneration)return;
       clearTimeout(player.speechTimer);player.speechTimer=null;
-      player.voiceLoading=false;player.last=performance.now();
+      setVoiceLoading(false);player.last=performance.now();
       player.segmentSeconds=Math.max(10,audio.duration||10);
       $('#voice-note').textContent='Kokoro · Heart voice · Captions always available';
       const next=Math.floor(player.time/10)+1;

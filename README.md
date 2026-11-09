@@ -34,6 +34,8 @@ Speech is generated at 24 kHz in a Web Worker. The model, voice, JavaScript, and
 
 Playback supports repeated replay, pause, restart, seeking, and mute. Pausing stops the audio source; resuming uses its sample position. Loading leaves the editor and controls responsive. The next sentence is prepared while the current sentence plays. Finished speech is played at its natural pitch and speed. Longer sentences are allowed to finish, so an explainer can run slightly beyond one minute rather than cutting off or speeding up a voice.
 
+While narration downloads or renders, the explainer shows a playful brick-breaker warm-up with live voice-loading feedback. The lesson timeline waits for speech to start, then the lesson diagram returns automatically. The warm-up uses local SVG and CSS, adds no downloads, and respects reduced-motion preferences.
+
 Verification checks all curriculum exercises, simulates three complete playback cycles, validates every model file's checksum, generates representative real Kokoro speech and personalized greetings, and tests actual audio buffers plus cancellation. The browser integration is also checked for non-silent Web Audio output, rather than relying on a speech-service status flag.
 
 On a first visit, learners can enter a first name or nickname. Tutorial narration and captions greet them by name at the beginning of each chapter. The name is stored with their existing browser-local progress and can be changed using the name button in the top bar. Choosing **Maybe later** continues without a name and dismisses the first-visit prompt. Names and spoken text stay in the browser and are never sent to a speech service.

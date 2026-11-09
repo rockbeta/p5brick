@@ -6,7 +6,7 @@ const vm = require('node:vm');
 // No browser, voice service, packages, or network access is needed in CI.
 function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   let now=0,serial=0,frame;
-  const timers=new Map(),elements=new Map(),speechCalls=[];
+  const timers=new Map(),elements=new Map(),speechCalls=[],speechRequests=[];
   const canvas=new Proxy({}, {get:()=>()=>{},set:()=>true});
   function element(selector){
     if(elements.has(selector))return elements.get(selector);
@@ -28,6 +28,7 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
     prefetch(){}
     play(text,options){
       if(voiceFails)throw new Error('Audio unavailable');
+      speechRequests.push(options);
       const generation=this.generation,call={text,offset:options.offset};
       const start=()=>{if(generation!==this.generation)return;this.source=call;synth.speaking=true;speechCalls.push(call);options.onstart({duration:voiceDuration});};
       if(voiceDelay){const id=++serial;timers.set(id,{fn:start,at:now+voiceDelay});}else start();
@@ -55,7 +56,7 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   function play(){element('#demo-play').click();advance(60);}
   function finish(){for(let i=0;i<620&&run('player.playing');i++)advance(100);}
   function seek(time){element('#demo-seek').value=String(time);element('#demo-seek').events.input({target:element('#demo-seek')});}
-  return {run,element,synth,speechCalls,advance,play,finish,seek,staleFrame:()=>frame(now-50)};
+  return {run,element,synth,speechCalls,speechRequests,advance,play,finish,seek,staleFrame:()=>frame(now-50)};
 }
 
 const repeated=app();
@@ -107,11 +108,35 @@ rapid.play();assert.equal(rapid.synth.speaking,true,'Restart/replay must start a
 rapid.run('loadChapter(1)');rapid.advance(100);
 assert.equal(rapid.run('player.playing'),false);assert.equal(rapid.synth.speaking,false,'Changing chapters must stop previous narration');
 
-const loading=app({voiceDelay:1000});loading.element('#demo-play').click();loading.advance(500);
-assert.equal(loading.run('player.time'),0,'The animation must wait for real audio preparation');
+const loading=app({voiceDelay:1000});
+assert.equal(loading.element('#narration-loading').hidden,true,'The warm-up must stay hidden before Play');
+loading.element('#demo-play').click();loading.advance(500);
+assert.equal(loading.element('#narration-loading').hidden,false,'The warm-up must appear while narration loads');
+assert.equal(loading.element('#concept-canvas').getAttribute('aria-hidden'),'true');
+loading.speechRequests.at(-1).onprogress('Downloading Kokoro voice… 50%');
+assert.equal(loading.element('#narration-loading-message').textContent,'Downloading Kokoro voice… 50%');
+assert.equal(loading.run('player.time'),0,'The lesson timeline must wait for real audio preparation');
 loading.advance(600);assert.equal(loading.run('player.voiceLoading'),false);assert.equal(loading.synth.speaking,true);
+assert.equal(loading.element('#narration-loading').hidden,true,'Speech startup must reveal the lesson');
+assert.equal(loading.element('#concept-canvas').getAttribute('aria-hidden'),'false');
+loading.seek(10);
+assert.equal(loading.element('#narration-loading').hidden,false,'Later uncached sentences must also show the warm-up');
+assert.equal(loading.run('player.time'),10);
+for(const cancel of [app=>app.element('#demo-play').click(),app=>app.element('#voice-toggle').click(),app=>app.run('loadChapter(1)'),app=>app.seek(60)]){
+  const pending=app({voiceDelay:1000});pending.element('#demo-play').click();
+  const request=pending.speechRequests.at(-1);
+  cancel(pending);
+  request.onprogress('Stale download progress');request.onstart({duration:10});pending.advance(1100);
+  assert.equal(pending.element('#narration-loading').hidden,true,'Canceling preparation must dismiss the warm-up and ignore late callbacks');
+  assert.notEqual(pending.element('#voice-note').textContent,'Stale download progress');
+  assert.equal(pending.speechCalls.length,0,'Canceled preparation must never start speech');
+}
+const timeout=app({voiceDelay:200000});timeout.element('#demo-play').click();timeout.advance(180001);
+assert.equal(timeout.element('#narration-loading').hidden,true,'A timeout must dismiss the warm-up so Play can retry');
+assert.match(timeout.element('#voice-note').textContent,/Press Play to retry/);
 const failed=app({voiceFails:true});failed.play();assert.equal(failed.run('player.playing'),false);
 assert.match(failed.element('#voice-note').textContent,/Press Play to retry/);
+assert.equal(failed.element('#narration-loading').hidden,true);
 const midpoint=app();midpoint.play();midpoint.seek(5);midpoint.advance(60);
 assert.equal(midpoint.speechCalls.at(-1).offset,.5,'Seeking must use the corresponding real audio position');
 const longVoice=app({voiceDuration:20});longVoice.play();

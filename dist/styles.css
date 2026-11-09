@@ -8,6 +8,26 @@
 @media(max-width:650px){.sidebar{transform:translateX(-100%);width:254px;transition:transform .2s;box-shadow:15px 0 50px #28391f11}.sidebar.mobile-open{transform:translateX(0)}.workspace{margin-left:0}.mobile-only{display:block}.topbar{padding:0 18px;height:60px;gap:10px}.breadcrumbs{gap:9px;font-size:9px}.breadcrumbs>span:first-of-type{display:none}.breadcrumb-slash{display:none}.topbar-actions{gap:0}.subtle-button{font-size:10px;padding:8px 10px}main{padding:28px 18px 0}.eyebrow{font-size:8px;gap:9px;letter-spacing:1.1px}.heading-row{display:block}h1{font-size:32px;letter-spacing:-1.4px;max-width:340px}.lesson-time{display:none}.lesson-description{font-size:12px}.lesson-tags{margin-top:12px}.section-heading{margin-top:26px}.section-heading>span{display:none}.section-heading h2{font-size:16px}.demo-card{padding:14px 12px 11px}.demo-illustration{height:165px}.demo-badge{font-size:7px;letter-spacing:1px}.demo-caption{font-size:10px;padding:0 5px;min-height:43px}.demo-controls{gap:8px}.voice-note{font-size:8px}.code-layer pre,.code-layer textarea,.line-numbers{font-size:10px;line-height:22px}.line-numbers{width:35px;min-width:35px;padding-right:10px}.editor-toolbar{padding-left:12px}.preview-stage{padding:8px;min-height:265px}.preview-stage iframe{min-height:245px;height:245px}.preview-footer{font-size:7px;padding:0 10px}.preview-footer>span:last-child{font-size:7px}.experiment-note p{font-size:9px}.lesson-footer{gap:10px}.next-button{padding:11px 13px;font-size:10px}.next-button>span{margin-left:7px}.previous-button{font-size:9px}.toast{left:50%;max-width:92vw;width:max-content;font-size:11px}dialog{padding:22px}.dialog-header h2{font-size:24px}.map-unit>div{grid-template-columns:1fr}.exercise-intro{font-size:11px}.demo-controls #demo-time{font-size:7px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 
+/* A local warm-up runs while narration downloads or renders. */
+.narration-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:clamp(10px,2vw,24px);padding:6px clamp(4px,1vw,16px);background:#eeedf9}
+.narration-loading[hidden]{display:none}
+.warmup-game{display:block;width:42%;max-width:210px;flex-shrink:0;overflow:visible}
+.warmup-copy{max-width:260px;min-width:0}
+.warmup-title{font:500 clamp(17px,1.6vw,23px)/1.2 var(--display);letter-spacing:-.5px;color:#66537d;margin:0 0 8px}
+.warmup-status{font-size:clamp(10px,1vw,12px);line-height:1.5;color:#716183;margin:0}
+.warmup-hint{font-size:clamp(9px,.9vw,11px);line-height:1.5;color:#827493;margin:8px 0 0}
+.warmup-bricks rect{fill:#ae9bc9;transform-box:fill-box;transform-origin:center;animation:warmupBrick 2.8s ease-in-out infinite}
+.warmup-bricks rect:nth-child(n+5){fill:#beaaca}
+.warmup-bricks rect:nth-child(n+9){fill:#d8b8ab}
+.warmup-bricks rect:nth-child(4n+2){animation-delay:-.7s}
+.warmup-bricks rect:nth-child(4n+3){animation-delay:-1.4s}
+.warmup-bricks rect:nth-child(4n){animation-delay:-2.1s}
+.warmup-ball{transform:translate(96px,106px);animation:warmupBounce 2.8s linear infinite}
+.warmup-paddle{transform:translateX(68px);animation:warmupCatch 2.8s linear infinite}
+@keyframes warmupBrick{0%,20%,70%,100%{opacity:1;transform:scale(1)}40%{opacity:.45;transform:scale(.86)}}
+@keyframes warmupBounce{0%,100%{transform:translate(57px,139px)}25%{transform:translate(178px,75px)}50%{transform:translate(142px,139px)}75%{transform:translate(65px,75px)}}
+@keyframes warmupCatch{0%,100%{transform:translateX(29px)}25%{transform:translateX(150px)}50%{transform:translateX(114px)}75%{transform:translateX(37px)}}
+
 /* Comfortable reading sizes and contrast for young learners. */
 .lesson-description{font-size:14px;color:#6b7863}
 .chapter-link{font-size:12px;color:#69765f}
