@@ -25,7 +25,6 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   class Narrator {
     constructor(){this.generation=0;this.source=null;}
     stop(){this.generation++;this.source=null;synth.speaking=false;}
-    prefetch(){}
     play(text,options){
       if(voiceFails)throw new Error('Audio unavailable');
       speechRequests.push(options);
@@ -65,6 +64,7 @@ repeated.seek(60);repeated.speechCalls.length=0;
 for(let cycle=0;cycle<3;cycle++){
   const before=repeated.speechCalls.length;repeated.play();
   assert.equal(repeated.speechCalls.length,before+1,'Play/replay must queue exactly one opening sentence');
+  assert.equal(repeated.speechRequests.at(-1).prepare.length,6,'Playback must prepare the full lesson before the opening sentence');
   assert.match(repeated.speechCalls.at(-1).text,/Welcome, Alex!/);
   repeated.finish();
   assert.equal(repeated.speechCalls.length,before+6,'Each complete run must speak exactly six segments');
@@ -89,6 +89,7 @@ controls.element('#demo-restart').click();controls.advance(60);
 assert.equal(controls.speechCalls.length,3,'Restart while playing must speak one fresh opening sentence');
 controls.seek(20);controls.advance(60);
 assert.equal(controls.speechCalls.length,4);assert.match(controls.speechCalls.at(-1).text,/setup function/);
+assert.equal(controls.speechRequests.at(-1).prepare.length,4,'Seeking must prepare every remaining part');
 controls.seek(30);controls.element('#demo-play').click();controls.advance(100);
 assert.equal(controls.speechCalls.length,4,'Pausing before queued speech starts must cancel that pending speech');
 controls.play();assert.equal(controls.speechCalls.length,5);

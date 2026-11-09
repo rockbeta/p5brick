@@ -207,7 +207,8 @@ function stopNarration(){
 function speakSegment(){
   stopNarration();if(state.muted||!player.playing)return;
   const generation=player.speechGeneration;
-  const sentence=narrationText(Math.min(5,Math.floor(player.time/10)));
+  const segment=Math.min(5,Math.floor(player.time/10)),sentence=narrationText(segment);
+  const prepare=Array.from({length:6-segment},(_,i)=>narrationText(segment+i));
   setVoiceLoading(true);
   const failed=error=>{
     if(generation!==player.speechGeneration)return;
@@ -217,7 +218,7 @@ function speakSegment(){
   player.speechTimer=setTimeout(failed,180000);
   try{
     // play() unlocks Web Audio synchronously in this click, then renders speech.
-    narrator.play(sentence,{offset:(player.time%10)/10,onprogress:message=>{
+    narrator.play(sentence,{offset:(player.time%10)/10,prepare,onprogress:message=>{
       if(generation!==player.speechGeneration||!player.voiceLoading)return;
       setVoiceLoading(true,message);
       clearTimeout(player.speechTimer);player.speechTimer=setTimeout(failed,180000);
@@ -227,8 +228,6 @@ function speakSegment(){
       setVoiceLoading(false);player.last=performance.now();
       player.segmentSeconds=Math.max(10,audio.duration||10);
       $('#voice-note').textContent='Narration on · Captions always available';
-      const next=Math.floor(player.time/10)+1;
-      if(next<6)narrator.prefetch(narrationText(next));
     }}).catch(failed);
   }catch{failed();}
 }

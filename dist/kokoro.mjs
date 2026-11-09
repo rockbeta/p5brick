@@ -14,7 +14,7 @@ export function createKokoroVoice({onprogress=()=>{}}={}){
   };
   worker.onmessage=({data})=>{
     if(failed)return;
-    if(data.type==='progress'){if(pending.size)watch(data.stage);onprogress(data.message);return;}
+    if(data.type==='progress'){if(pending.size)watch(data.stage);onprogress(data.message,data.stage);return;}
     const request=pending.get(data.id);if(!request)return;pending.delete(data.id);
     clearTimeout(timer);if(pending.size)watch('loading');
     if(data.type==='audio')request.resolve({samples:data.samples,sampleRate:data.sampleRate});
