@@ -209,10 +209,10 @@ function speakSegment(){
   const generation=player.speechGeneration;
   const sentence=narrationText(Math.min(5,Math.floor(player.time/10)));
   setVoiceLoading(true);
-  const failed=()=>{
+  const failed=error=>{
     if(generation!==player.speechGeneration)return;
     player.playing=false;stopNarration();updatePlayer();
-    $('#voice-note').textContent='Voice could not start. Press Play to retry · Captions are available';
+    $('#voice-note').textContent=error?.code==='VOICE_TIMEOUT'?'Voice took too long. Press Play to retry · Mute for captions':'Voice could not start. Press Play to retry · Captions are available';
   };
   player.speechTimer=setTimeout(failed,180000);
   try{
@@ -364,6 +364,7 @@ $('#demo-play').addEventListener('click',togglePlayback);
 $('#demo-restart').addEventListener('click',()=>seekPlayback(0));
 $('#demo-seek').addEventListener('input',e=>seekPlayback(e.target.value));
 $('#voice-toggle').addEventListener('click',()=>{state.muted=!state.muted;persist();state.muted?stopNarration():speakSegment();updatePlayer();});
+$('#continue-captions').addEventListener('click',()=>{state.muted=true;persist();stopNarration();updatePlayer();});
 $('#captions-toggle').addEventListener('click',()=>{player.caption=!player.caption;$('#captions-toggle').setAttribute('aria-pressed',String(player.caption));updatePlayer();});
 $('#map-button').addEventListener('click',showMap);$('#close-map').addEventListener('click',()=>$('#course-dialog').close());
 $('#profile-button').addEventListener('click',openNamePrompt);

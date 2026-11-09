@@ -16,7 +16,7 @@ No build, API keys, or server database is required to serve the site. Verificati
 
 ## GitHub Pages deployment
 
-GitHub Pages is configured to use **GitHub Actions**. Every push to `main` runs the JavaScript checks and curriculum verification suite, then publishes the contents of `dist/`. You can also run **Deploy to GitHub Pages** manually from the repository's Actions tab.
+GitHub Pages is configured to use **GitHub Actions**. Every push to `main` runs the JavaScript checks and curriculum verification suite, then publishes the contents of `dist/`. Browser asset URLs include the release's commit SHA so browsers fetch matching JavaScript, CSS, and narration worker versions. You can also run **Deploy to GitHub Pages** manually from the repository's Actions tab.
 
 The site uses relative asset paths and hash-based chapter links, so it works at the `/p5brick/` project URL without a build-time base-path setting. The published site is public and does not require ChatGPT or GitHub sign-in. Drafts and progress stay in the current browser; they are not synced between devices or shared with the repository.
 
@@ -34,7 +34,7 @@ Speech is generated at 24 kHz in a Web Worker. The model, voice, JavaScript, and
 
 Playback supports repeated replay, pause, restart, seeking, and mute. Pausing stops the audio source; resuming uses its sample position. Loading leaves the editor and controls responsive. The next sentence is prepared while the current sentence plays. Finished speech is played at its natural pitch and speed. Longer sentences are allowed to finish, so an explainer can run slightly beyond one minute rather than cutting off or speeding up a voice.
 
-While narration downloads or renders, the explainer shows a playful brick-breaker warm-up with live voice-loading feedback. The lesson timeline waits for speech to start, then the lesson diagram returns automatically. The warm-up uses local SVG and CSS, adds no downloads, and respects reduced-motion preferences.
+While narration downloads or renders, the explainer shows a playful brick-breaker warm-up with live voice-loading feedback and a **Continue with captions** option. The lesson timeline waits for speech to start, then the lesson diagram returns automatically. The warm-up uses local SVG and CSS, adds no downloads, and respects reduced-motion preferences. A synthesis job that exceeds 60 seconds terminates its worker so Play can retry with a fresh instance; downloads allow up to three minutes without progress.
 
 Verification checks all curriculum exercises, simulates three complete playback cycles, validates every model file's checksum, generates representative real Kokoro speech and personalized greetings, and tests actual audio buffers plus cancellation. The browser integration is also checked for non-silent Web Audio output, rather than relying on a speech-service status flag.
 

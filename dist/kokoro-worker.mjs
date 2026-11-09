@@ -1,5 +1,5 @@
-import {KokoroTTS,env} from './vendor/kokoro/kokoro.web.mjs';
-import {KOKORO} from './kokoro-config.mjs';
+import {KokoroTTS,env} from './vendor/kokoro/kokoro.web.mjs?v=20261109-2';
+import {KOKORO} from './kokoro-config.mjs?v=20261109-2';
 
 // Latest official stable English model; v1.1 is the Chinese-specific release.
 env.wasmPaths=new URL('./vendor/kokoro/ort-tf3.5.1/',import.meta.url).href;
@@ -12,7 +12,7 @@ globalThis.fetch=(input,options)=>{
   return fetchModel(url.startsWith(modelPrefix)?new URL('./models/kokoro/'+url.slice(modelPrefix.length),import.meta.url):input,options);
 };
 let ready,queue=Promise.resolve();
-const progress=message=>self.postMessage({type:'progress',message});
+const progress=(message,stage='loading')=>self.postMessage({type:'progress',message,stage});
 function load(){
   if(!ready){
     let lastPercent=-1;
@@ -31,7 +31,7 @@ self.onmessage=event=>{
   const {id,text}=event.data;
   queue=queue.catch(()=>{}).then(async()=>{
     try{
-      const model=await load();progress('Generating Kokoro narration…');
+      const model=await load();progress('Generating Kokoro narration…','generating');
       const audio=await model.generate(text,{voice:KOKORO.voice,speed:KOKORO.speed});
       const samples=new Float32Array(audio.audio);
       if(!samples.some(value=>Number.isFinite(value)&&Math.abs(value)>.001))throw new Error('Kokoro generated no sound');

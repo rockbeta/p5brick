@@ -49,6 +49,18 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
+      - name: Version browser assets for this release
+        env:
+          ASSET_VERSION: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          for name in ('index.html', 'voice.js', 'kokoro.mjs', 'kokoro-worker.mjs'):
+              path = Path('dist') / name
+              path.write_text(re.sub(r'(?<=\?v=)[A-Za-z0-9.-]+', os.environ['ASSET_VERSION'], path.read_text()))
+          PY
+
       - name: Upload the static site
         uses: actions/upload-pages-artifact@v4
         with:

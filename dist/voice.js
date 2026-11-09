@@ -15,9 +15,12 @@ class LocalNarrator {
   render(voice,text){
     let rendered=this.cache.get(text);
     if(!rendered){
+      const ready=this.ready;
       rendered=Promise.resolve().then(()=>voice.synthesize(text)).catch(error=>{
         if(this.cache.get(text)===rendered)this.cache.delete(text);
-        voice.dispose?.();this.ready=null;throw error;
+        voice.dispose?.();
+        if(this.ready===ready){this.ready=null;this.cache.clear();}
+        throw error;
       });
       if(this.cache.size>=12)this.cache.delete(this.cache.keys().next().value);
       this.cache.set(text,rendered);
@@ -30,7 +33,7 @@ class LocalNarrator {
     this.progress=onprogress;
     // Preserve browser user activation for the audio output context.
     const unlocked=this.unlock();
-    if(!this.ready)this.ready=import('./kokoro.mjs').then(module=>module.createKokoroVoice({onprogress:message=>this.progress?.(message)})).catch(error=>{this.ready=null;throw error;});
+    if(!this.ready)this.ready=import('./kokoro.mjs?v=20261109-2').then(module=>module.createKokoroVoice({onprogress:message=>this.progress?.(message)})).catch(error=>{this.ready=null;throw error;});
     return Promise.all([unlocked,this.ready]).then(async([,voice])=>{
       if(generation!==this.generation)return false;
       const rendered=await this.render(voice,text);

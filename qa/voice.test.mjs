@@ -47,4 +47,14 @@ narrator.stop();await narrator.play('Welcome, Alex!');assert.equal(narrator.sour
 let resolve;const waiting=new LocalNarrator();waiting.ready=new Promise(done=>resolve=done);
 const pending=waiting.play('Do not speak after Pause.');waiting.stop();resolve(voice);
 assert.equal(await pending,false);assert.equal(waiting.source,null,'Late synthesis completion must not play after Pause');
+// Errors from an old worker's queued requests must not discard a fresh retry.
+const rejects=[],broken={synthesize(){return new Promise((resolve,reject)=>rejects.push(reject));},dispose(){}};
+const recovering=new LocalNarrator();recovering.ready=Promise.resolve(broken);
+const firstError=assert.rejects(recovering.render(broken,'First failed request'),/timed out/);
+const queuedError=assert.rejects(recovering.render(broken,'Queued failed request'),/timed out/);
+await Promise.resolve();rejects[0](new Error('timed out'));await firstError;
+const fresh=Promise.resolve(voice);recovering.ready=fresh;
+rejects[1](new Error('timed out'));await queuedError;
+assert.equal(recovering.ready,fresh,'A stale rejection must preserve the new voice instance');
+assert.equal(await recovering.play('Welcome, Alex!'),true);recovering.stop();
 console.log(`PASS: ${rendered} real, non-silent Kokoro narrated sentences; personalized names; real audio buffers; synchronous audio unlock; stop, resume, replay, and canceled loading.`);

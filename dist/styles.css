@@ -16,6 +16,9 @@
 .warmup-title{font:500 clamp(17px,1.6vw,23px)/1.2 var(--display);letter-spacing:-.5px;color:#66537d;margin:0 0 8px}
 .warmup-status{font-size:clamp(10px,1vw,12px);line-height:1.5;color:#716183;margin:0}
 .warmup-hint{font-size:clamp(9px,.9vw,11px);line-height:1.5;color:#827493;margin:8px 0 0}
+.warmup-continue{display:block;background:transparent;border:0;border-bottom:1px solid #b7a8c8;color:#66537d;padding:3px 0;margin-top:9px;font:500 clamp(10px,1vw,12px)/1.4 var(--body);text-align:left}
+.warmup-continue:hover{color:#48365e;border-color:currentColor}
+@media(max-width:650px){.warmup-hint{display:none}}
 .warmup-bricks rect{fill:#ae9bc9;transform-box:fill-box;transform-origin:center;animation:warmupBrick 2.8s ease-in-out infinite}
 .warmup-bricks rect:nth-child(n+5){fill:#beaaca}
 .warmup-bricks rect:nth-child(n+9){fill:#d8b8ab}

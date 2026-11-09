@@ -122,7 +122,7 @@ assert.equal(loading.element('#concept-canvas').getAttribute('aria-hidden'),'fal
 loading.seek(10);
 assert.equal(loading.element('#narration-loading').hidden,false,'Later uncached sentences must also show the warm-up');
 assert.equal(loading.run('player.time'),10);
-for(const cancel of [app=>app.element('#demo-play').click(),app=>app.element('#voice-toggle').click(),app=>app.run('loadChapter(1)'),app=>app.seek(60)]){
+for(const cancel of [app=>app.element('#demo-play').click(),app=>app.element('#voice-toggle').click(),app=>app.element('#continue-captions').click(),app=>app.run('loadChapter(1)'),app=>app.seek(60)]){
   const pending=app({voiceDelay:1000});pending.element('#demo-play').click();
   const request=pending.speechRequests.at(-1);
   cancel(pending);
@@ -131,6 +131,10 @@ for(const cancel of [app=>app.element('#demo-play').click(),app=>app.element('#v
   assert.notEqual(pending.element('#voice-note').textContent,'Stale download progress');
   assert.equal(pending.speechCalls.length,0,'Canceled preparation must never start speech');
 }
+const captions=app({voiceDelay:1000});captions.element('#demo-play').click();captions.element('#continue-captions').click();captions.advance(500);
+assert.equal(captions.run('player.playing'),true,'Continue with captions must keep the lesson playing');
+assert.equal(captions.run('state.muted'),true);assert.ok(captions.run('player.time')>0);
+assert.notEqual(captions.element('#demo-caption').textContent,'');
 const timeout=app({voiceDelay:200000});timeout.element('#demo-play').click();timeout.advance(180001);
 assert.equal(timeout.element('#narration-loading').hidden,true,'A timeout must dismiss the warm-up so Play can retry');
 assert.match(timeout.element('#voice-note').textContent,/Press Play to retry/);
