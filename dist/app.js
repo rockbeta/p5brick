@@ -9,14 +9,33 @@ const icons = {
 };
 let storageAvailable = true;
 let saved;
-try { saved = JSON.parse(localStorage.getItem('brick-by-brick-v1') || '{}'); } catch { saved = {}; storageAvailable = false; }
-const state = {drafts:saved.drafts || {}, passed:saved.passed || {}, muted:!!saved.muted};
+try { saved = JSON.parse(localStorage.getItem('brick-by-brick-v1') || '{}') || {}; } catch { saved = {}; storageAvailable = false; }
+const state = {drafts:saved.drafts || {}, passed:saved.passed || {}, muted:!!saved.muted, learnerName:normalizeLearnerName(saved.learnerName), namePromptSeen:!!saved.namePromptSeen};
 let current=0, expanded=new Set([0]), runId=0, runtimeError=false, runReady=false, draftTimer;
 let pendingChecks = new Map(), checkSerial=0;
 const player = {time:0,playing:false,caption:true,segment:-1,last:0};
 function persist() {
   try {localStorage.setItem('brick-by-brick-v1',JSON.stringify(state));} catch {storageAvailable=false;}
   if(!storageAvailable) $('#save-status').textContent='Progress available this visit';
+}
+function normalizeLearnerName(value){return typeof value==='string'?value.replace(/[\u0000-\u001f\u007f]/g,' ').trim().replace(/\s+/g,' ').slice(0,32):'';}
+function narrationText(segment){
+  const text=COURSE[current].story[segment];
+  if(text.includes('{name}'))return text.replaceAll('{name}',state.learnerName || 'friend');
+  // Voice, captions, and accessible text use the same personalized sentence.
+  return segment===0&&state.learnerName?`${state.learnerName}, ${text.charAt(0).toLowerCase()}${text.slice(1)}`:text;
+}
+function renderPersonalization(){
+  $('#profile-label').textContent=state.learnerName || 'Your name';
+  $('#profile-button').setAttribute('aria-label',state.learnerName?`Change your name, currently ${state.learnerName}`:'Set your name');
+  $('#exercise-greeting').textContent=state.learnerName?`Your turn, ${state.learnerName}`:'Your turn';
+  player.segment=-1;updatePlayer();
+}
+function openNamePrompt(){
+  if(player.playing){player.playing=false;stopNarration();updatePlayer();}
+  const input=$('#learner-name');input.value=state.learnerName;input.setCustomValidity('');
+  $('#skip-name').textContent=state.learnerName?'Cancel':'Maybe later';
+  $('#name-dialog').showModal();input.focus();
 }
 function saveDraft() {state.drafts[current+1]=$('#code-editor').value;persist();}
 function completed(id){return (state.passed[id] || []).filter(Boolean).length===3;}
@@ -147,7 +166,7 @@ function stopNarration(){if('speechSynthesis'in window)speechSynthesis.cancel();
 function speakSegment(){
   stopNarration();if(state.muted||!player.playing)return;
   if(!('speechSynthesis'in window)||!('SpeechSynthesisUtterance'in window)){$('#voice-note').textContent='Your browser has no narration voice · Follow the captions below the animation';return;}
-  const sentence=COURSE[current].story[Math.min(5,Math.floor(player.time/10))];
+  const sentence=narrationText(Math.min(5,Math.floor(player.time/10)));
   const utterance=new SpeechSynthesisUtterance(sentence);utterance.lang='en-US';utterance.rate=Math.max(1,Math.min(1.3,sentence.split(/\s+/).length/24));
   const voices=speechSynthesis.getVoices();const voice=voices.find(v=>v.lang==='en-US'&&/samantha|aria|jenny|google us/i.test(v.name)) || voices.find(v=>v.lang.startsWith('en'));
   if(voice)utterance.voice=voice;
@@ -160,8 +179,9 @@ function updatePlayer(){
   $('#voice-toggle').innerHTML=state.muted?icons.mute:icons.sound;$('#voice-toggle').setAttribute('aria-label',state.muted?'Turn narration on':'Mute narration');$('#voice-toggle').setAttribute('aria-pressed',String(state.muted));
   $('#demo-time').innerHTML=`${Math.floor(player.time/60)}:${String(Math.floor(player.time%60)).padStart(2,'0')} <span>/ 1:00</span>`;$('#demo-seek').value=player.time;
   const seg=Math.min(5,Math.floor(player.time/10));
-  $('#demo-caption').textContent=player.caption?COURSE[current].story[seg]:'';
-  $('#concept-canvas').setAttribute('aria-label',COURSE[current].story[seg]);
+  const sentence=narrationText(seg);
+  $('#demo-caption').textContent=player.caption?sentence:'';
+  $('#concept-canvas').setAttribute('aria-label',sentence);
   if(seg!==player.segment){player.segment=seg;if(player.playing)speakSegment();}
 }
 function togglePlayback(){if(player.time>=60){player.time=0;player.segment=-1;}player.playing=!player.playing;player.last=performance.now();if(player.playing)speakSegment();else stopNarration();updatePlayer();}
@@ -259,6 +279,15 @@ $('#demo-seek').addEventListener('input',e=>{player.time=+e.target.value;player.
 $('#voice-toggle').addEventListener('click',()=>{state.muted=!state.muted;persist();state.muted?stopNarration():speakSegment();updatePlayer();});
 $('#captions-toggle').addEventListener('click',()=>{player.caption=!player.caption;$('#captions-toggle').setAttribute('aria-pressed',String(player.caption));updatePlayer();});
 $('#map-button').addEventListener('click',showMap);$('#close-map').addEventListener('click',()=>$('#course-dialog').close());
+$('#profile-button').addEventListener('click',openNamePrompt);
+$('#learner-name').addEventListener('input',e=>e.target.setCustomValidity(''));
+$('#name-form').addEventListener('submit',e=>{
+  e.preventDefault();const input=$('#learner-name'),name=normalizeLearnerName(input.value);
+  if(!name){input.setCustomValidity('Try a first name or nickname, or choose Maybe later.');input.reportValidity();return;}
+  state.learnerName=name;state.namePromptSeen=true;persist();renderPersonalization();$('#name-dialog').close();
+});
+$('#skip-name').addEventListener('click',()=>$('#name-dialog').close());
+$('#name-dialog').addEventListener('close',()=>{state.namePromptSeen=true;persist();});
 $('#previous-chapter').addEventListener('click',()=>goChapter(current));$('#next-chapter').addEventListener('click',()=>current===25?showMap():goChapter(current+2));
 $('#final-project').addEventListener('click',()=>goChapter(26));$('#mobile-menu').addEventListener('click',()=>$('#sidebar').classList.toggle('mobile-open'));
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#sidebar')&&!e.target.closest('#mobile-menu'))$('#sidebar').classList.remove('mobile-open');});
@@ -266,4 +295,6 @@ $('#download-code').addEventListener('click',()=>{saveDraft();const url=URL.crea
 window.addEventListener('hashchange',route);window.addEventListener('pagehide',()=>{saveDraft();stopNarration();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&player.playing){player.playing=false;stopNarration();updatePlayer();}});
 for(const d of document.querySelectorAll('dialog'))d.addEventListener('click',e=>{if(e.target===d){const b=d.getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)d.close();}});
-persist();route();requestAnimationFrame(animationFrame);
+persist();route();renderPersonalization();
+if(!state.learnerName&&!state.namePromptSeen)openNamePrompt();
+requestAnimationFrame(animationFrame);

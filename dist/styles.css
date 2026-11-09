@@ -31,4 +31,22 @@
 .experiment-note p code{font-size:10px}
 .preview-footer,.preview-footer>span:last-child{color:#7b896e}
 .map-chapter{font-size:12px}
+.profile-button{display:flex;align-items:center;gap:7px;max-width:170px;min-width:0}
+.profile-button span{margin:0}
+.profile-button>span:first-child{font-size:16px;color:#78886a}
+#profile-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px}
+#exercise-greeting{overflow-wrap:anywhere}
+.name-dialog{width:min(440px,calc(100vw - 32px));padding:32px}
+.welcome-mark{width:49px;height:49px;display:grid;place-items:center;border-radius:14px;background:#eeebf8;color:#9887b1;font-size:33px;margin-bottom:23px;transform:rotate(-6deg)}
+.name-dialog .eyebrow{font-size:9px;color:#ba7455}
+.name-dialog h2{font:500 32px/1.16 var(--display);letter-spacing:-1.2px;margin:15px 0}
+.name-dialog p{font-size:13px;line-height:1.8;color:#718166;margin:0 0 22px}
+.name-dialog label{display:block;font-size:12px;font-weight:500;color:#5d6c52;margin-bottom:9px}
+.name-dialog input{display:block;width:100%;min-height:46px;border:1px solid #ccd6bf;border-radius:6px;background:#fdfef8;padding:11px 13px;font:15px var(--body);color:#35432e}
+.name-dialog input::placeholder{color:#a2ac96}
+.name-dialog p.name-storage-note{font-size:11px;line-height:1.7;margin:10px 0 0;color:#859278}
+.name-dialog .dialog-actions{align-items:center;justify-content:space-between;margin-top:26px}
+.name-skip{background:none;color:#829173;font-size:12px;padding:10px 0}
+.name-dialog .next-button{font-size:13px;padding:13px 17px}
+@media(max-width:650px){.profile-button{max-width:110px;margin-right:8px;font-size:10px}.profile-button>span:first-child{font-size:14px}#profile-label{max-width:67px}.name-dialog{padding:26px}.name-dialog h2{font-size:30px}.name-dialog .next-button{font-size:12px}}
 @media(max-width:650px){.lesson-description{font-size:13px}.demo-caption{font-size:11px}.demo-illustration{min-height:125px}.code-layer pre,.code-layer textarea,.line-numbers{font-size:12px;line-height:24px}.experiment-note p{font-size:10px}.exercise-card p{font-size:12px}}
