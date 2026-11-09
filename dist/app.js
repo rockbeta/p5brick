@@ -13,7 +13,8 @@ try { saved = JSON.parse(localStorage.getItem('brick-by-brick-v1') || '{}') || {
 const state = {drafts:saved.drafts || {}, passed:saved.passed || {}, muted:!!saved.muted, learnerName:normalizeLearnerName(saved.learnerName), namePromptSeen:!!saved.namePromptSeen};
 let current=0, expanded=new Set([0]), runId=0, runtimeError=false, runReady=false, draftTimer;
 let pendingChecks = new Map(), checkSerial=0;
-const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,utterance:null};
+const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,voiceLoading:false};
+const narrator=new LocalNarrator();
 function persist() {
   try {localStorage.setItem('brick-by-brick-v1',JSON.stringify(state));} catch {storageAvailable=false;}
   if(!storageAvailable) $('#save-status').textContent='Progress available this visit';
@@ -164,47 +165,40 @@ async function checkExercise(i){
 }
 
 function stopNarration(){
-  // Invalidate callbacks before cancel(), which can dispatch an old error event.
   player.speechGeneration++;
   clearTimeout(player.speechTimer);player.speechTimer=null;
-  player.utterance=null;
-  if('speechSynthesis'in window)speechSynthesis.cancel();
+  player.voiceLoading=false;narrator.stop();
 }
 function speakSegment(){
   stopNarration();if(state.muted||!player.playing)return;
-  if(!('speechSynthesis'in window)||!('SpeechSynthesisUtterance'in window)){$('#voice-note').textContent='Your browser has no narration voice · Follow the captions below the animation';return;}
   const generation=player.speechGeneration;
-  const fullSentence=narrationText(Math.min(5,Math.floor(player.time/10)));
-  // Resume near the current word without relying on the native engine's
-  // inconsistent pause/resume queue. Captions continue to show the full sentence.
-  const words=fullSentence.split(/\s+/);
-  const word=Math.min(words.length-1,Math.floor(words.length*(player.time%10)/10));
-  const sentence=words.slice(word).join(' ');
-  const utterance=new SpeechSynthesisUtterance(sentence);utterance.lang='en-US';utterance.rate=Math.max(1,Math.min(1.3,sentence.split(/\s+/).length/24));
-  const voices=speechSynthesis.getVoices();const voice=voices.find(v=>v.lang==='en-US'&&/samantha|aria|jenny|google us/i.test(v.name)) || voices.find(v=>v.lang.startsWith('en'));
-  if(voice)utterance.voice=voice;
-  // Keep a strong reference until narration finishes or is canceled.
-  player.utterance=utterance;
-  utterance.onstart=()=>{if(generation===player.speechGeneration)$('#voice-note').textContent='Narrated in your browser · Captions always available';};
-  utterance.onend=()=>{if(generation===player.speechGeneration)player.utterance=null;};
-  utterance.onerror=e=>{
+  const sentence=narrationText(Math.min(5,Math.floor(player.time/10)));
+  player.voiceLoading=true;$('#voice-note').textContent='Preparing narration…';
+  const failed=()=>{
     if(generation!==player.speechGeneration)return;
-    player.utterance=null;
-    if(!['interrupted','canceled'].includes(e.error))$('#voice-note').textContent='Voice is unavailable in this browser · Follow the captions below the animation';
+    player.playing=false;stopNarration();updatePlayer();
+    $('#voice-note').textContent='Voice could not start. Press Play to retry · Captions are available';
   };
-  // Give the native speech engine time to clear cancellation before requeuing.
-  player.speechTimer=setTimeout(()=>{
-    player.speechTimer=null;
-    if(generation!==player.speechGeneration||!player.playing||state.muted)return;
-    try{if(speechSynthesis.paused)speechSynthesis.resume();speechSynthesis.speak(utterance);}
-    catch{utterance.onerror({error:'synthesis-unavailable'});}
-  },50);
+  player.speechTimer=setTimeout(failed,10000);
+  try{
+    // play() unlocks Web Audio synchronously in this click, then renders speech.
+    narrator.play(sentence,{offset:(player.time%10)/10,onstart:()=>{
+      if(generation!==player.speechGeneration)return;
+      clearTimeout(player.speechTimer);player.speechTimer=null;
+      player.voiceLoading=false;player.last=performance.now();
+      $('#voice-note').textContent='Voice on · Captions always available';
+    }}).catch(failed);
+  }catch{failed();}
 }
 function updatePlayer(){
   // Preserve the actual click targets between pointerdown and pointerup.
   if(player.renderedPlaying!==player.playing){$('#demo-play').innerHTML=player.playing?icons.pause:icons.play;player.renderedPlaying=player.playing;}
   $('#demo-play').setAttribute('aria-label',player.playing?'Pause explanation':player.time>=60?'Replay explanation':'Play one-minute explanation');
-  if(player.renderedMuted!==state.muted){$('#voice-toggle').innerHTML=state.muted?icons.mute:icons.sound;player.renderedMuted=state.muted;}
+  if(player.renderedMuted!==state.muted){
+    $('#voice-toggle').innerHTML=state.muted?icons.mute:icons.sound;player.renderedMuted=state.muted;
+    if(state.muted)$('#voice-note').textContent='Voice off · Captions always available';
+    else if(!player.voiceLoading)$('#voice-note').textContent='Voice ready · Press Play to listen';
+  }
   $('#voice-toggle').setAttribute('aria-label',state.muted?'Turn narration on':'Mute narration');$('#voice-toggle').setAttribute('aria-pressed',String(state.muted));
   $('#demo-time').innerHTML=`${Math.floor(player.time/60)}:${String(Math.floor(player.time%60)).padStart(2,'0')} <span>/ 1:00</span>`;$('#demo-seek').value=player.time;
   const seg=Math.min(5,Math.floor(player.time/10));
@@ -215,6 +209,7 @@ function updatePlayer(){
 }
 function pausePlayback(){
   player.playing=false;stopNarration();updatePlayer();
+  if(!state.muted)$('#voice-note').textContent='Voice paused · Press Play to continue';
 }
 function togglePlayback(){
   if(player.playing){pausePlayback();return;}
@@ -227,6 +222,7 @@ function seekPlayback(time){
   if(player.time>=60)player.playing=false;
   updatePlayer();
   if(player.playing)speakSegment();else stopNarration();
+  if(!player.playing&&!state.muted)$('#voice-note').textContent=player.time>=60?'Ready to replay · Press Play to listen again':'Voice ready · Press Play to listen';
 }
 
 // Purpose-built canvas diagrams; animation is rendered locally, with no video service.
@@ -295,10 +291,10 @@ function drawConcept(now){
   label('↗',842,72,25,'#c5bcd5');
 }
 function animationFrame(now){
-  if(player.playing){
-    const delta=Math.min((now-player.last)/1000,.2);player.time=Math.min(60,player.time+delta);
+  if(player.playing&&!player.voiceLoading){
+    const delta=Math.max(0,Math.min((now-player.last)/1000,.2));player.time=Math.min(60,player.time+delta);
     const segmentChanged=Math.min(5,Math.floor(player.time/10))!==player.segment;
-    if(player.time>=60){player.playing=false;stopNarration();}
+    if(player.time>=60){player.playing=false;stopNarration();if(!state.muted)$('#voice-note').textContent='Ready to replay · Press Play to listen again';}
     updatePlayer();
     if(player.playing&&segmentChanged)speakSegment();
   }

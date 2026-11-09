@@ -28,11 +28,11 @@ Run `npm run check` and `npm test` to verify changes locally. No dependency inst
 - `dist/app.js`: course navigation, syntax highlighting, sandbox runner, exercise feedback, local progress, and narrated concept diagrams.
 - `dist/styles.css`: responsive layout, design system, and keyboard focus styles.
 
-The one-minute explanations use `speechSynthesis`, with voice availability depending on the learner's browser and OS. Captions work independently. Narration starts only when the learner presses play. This version uses the browser's voice rather than pre-recorded audio files.
+The one-minute explanations generate speech locally using the bundled Apache-licensed SVOX Pico WebAssembly engine and its English voice data (approximately 2.6 MB total). Web Audio plays the resulting speech samples. No OS speech service, cloud API, or server is required. Captions work independently, and narration starts only when the learner presses Play.
 
-Playback supports repeated replay, pause, restart, seeking, and mute. Pausing freezes the animation and cancels native speech; resuming starts a fresh utterance near the corresponding word in the current caption. This avoids keeping a browser speech queue paused between plays. The playback regression suite runs three full simulated lessons and checks cancellation, rapid clicks, controls, and replay alongside the curriculum tests.
+Playback supports repeated replay, pause, restart, seeking, and mute. Pausing freezes the animation and stops the audio source; resuming starts at the corresponding sample position. While voice assets load, the animation waits rather than running silently ahead. The verification suite renders all 156 narration segments into actual non-silent speech, checks the audio adapter, and exercises three full simulated lessons plus loading, cancellation, and replay.
 
-On a first visit, learners can enter a first name or nickname. Tutorial narration and captions greet them by name at the beginning of each chapter. The name is stored with their existing browser-local progress and can be changed using the name button in the top bar. Choosing **Maybe later** continues without a name and dismisses the first-visit prompt. No name is sent to a site server or GitHub; browser speech synthesis may use the browser or operating system's voice service.
+On a first visit, learners can enter a first name or nickname. Tutorial narration and captions greet them by name at the beginning of each chapter. The name is stored with their existing browser-local progress and can be changed using the name button in the top bar. Choosing **Maybe later** continues without a name and dismisses the first-visit prompt. Names and spoken text stay in the browser and are never sent to a speech service.
 
 ## Learner controls
 

@@ -2,9 +2,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-// Boot the real app with a deterministic clock and native-speech stand-in.
+// Boot the real app with a deterministic clock and audio-output stand-in.
 // No browser, voice service, packages, or network access is needed in CI.
-function app({startEvent=true}={}){
+function app({voiceDelay=1,voiceFails=false}={}){
   let now=0,serial=0,frame;
   const timers=new Map(),elements=new Map(),speechCalls=[];
   const canvas=new Proxy({}, {get:()=>()=>{},set:()=>true});
@@ -21,16 +21,22 @@ function app({startEvent=true}={}){
     elements.set(selector,el);return el;
   }
   const document={hidden:false,querySelector:element,querySelectorAll:()=>[],addEventListener(){},title:''};
-  const synth={paused:false,speaking:false,pending:false,active:null,
-    getVoices:()=>[{name:'Samantha',lang:'en-US'}],
-    speak(utterance){speechCalls.push(utterance);this.active=utterance;this.speaking=true;if(startEvent)utterance.onstart?.();},
-    cancel(){const old=this.active;this.active=null;this.speaking=false;old?.onerror?.({error:'interrupted'});},
-    pause(){this.paused=true;},resume(){this.paused=false;}
-  };
+  const synth={speaking:false,paused:false};
+  class Narrator {
+    constructor(){this.generation=0;this.source=null;}
+    stop(){this.generation++;this.source=null;synth.speaking=false;}
+    play(text,options){
+      if(voiceFails)throw new Error('Audio unavailable');
+      const generation=this.generation,call={text,offset:options.offset};
+      const start=()=>{if(generation!==this.generation)return;this.source=call;synth.speaking=true;speechCalls.push(call);options.onstart();};
+      if(voiceDelay){const id=++serial;timers.set(id,{fn:start,at:now+voiceDelay});}else start();
+      return Promise.resolve(true);
+    }
+  }
   const context={console,document,URL,performance:{now:()=>now},
     location:{href:'https://example.test/p5brick/',hash:'#chapter/1'},
     localStorage:{getItem:()=>JSON.stringify({learnerName:'Alex',namePromptSeen:true}),setItem(){}},
-    speechSynthesis:synth,SpeechSynthesisUtterance:class{constructor(text){this.text=text;}},
+    LocalNarrator:Narrator,
     setTimeout(fn,delay=0){const id=++serial;timers.set(id,{fn,at:now+delay});return id;},
     clearTimeout(id){timers.delete(id);},requestAnimationFrame(fn){frame=fn;},addEventListener(){},scrollTo(){},
   };
@@ -46,12 +52,14 @@ function app({startEvent=true}={}){
     frame?.(now);
   }
   function play(){element('#demo-play').click();advance(60);}
-  function finish(){for(let i=0;i<605&&run('player.playing');i++)advance(100);}
+  function finish(){for(let i=0;i<620&&run('player.playing');i++)advance(100);}
   function seek(time){element('#demo-seek').value=String(time);element('#demo-seek').events.input({target:element('#demo-seek')});}
-  return {run,element,synth,speechCalls,advance,play,finish,seek};
+  return {run,element,synth,speechCalls,advance,play,finish,seek,staleFrame:()=>frame(now-50)};
 }
 
 const repeated=app();
+repeated.play();repeated.staleFrame();assert.ok(repeated.run('player.time')>=0,'A frame timestamp from before asynchronous voice startup must not rewind time');
+repeated.seek(60);repeated.speechCalls.length=0;
 for(let cycle=0;cycle<3;cycle++){
   const before=repeated.speechCalls.length;repeated.play();
   assert.equal(repeated.speechCalls.length,before+1,'Play/replay must queue exactly one opening sentence');
@@ -72,7 +80,7 @@ const utterance=controls.speechCalls.at(-1),time=controls.run('player.time');
 controls.element('#demo-play').click();controls.advance(1000);
 assert.equal(controls.run('player.time'),time,'Pause must freeze the animation clock');
 assert.equal(controls.synth.speaking,false,'Pause must stop the current narration');
-controls.play();assert.equal(controls.synth.paused,false);
+controls.play();assert.equal(controls.synth.speaking,true);
 assert.notEqual(controls.speechCalls.at(-1),utterance,'Resume must use a fresh utterance rather than a paused native queue');
 assert.equal(controls.speechCalls.length,2,'Resume must queue exactly one fresh utterance');
 controls.element('#demo-restart').click();controls.advance(60);
@@ -87,26 +95,22 @@ const mute=app();mute.play();mute.element('#voice-toggle').click();
 assert.equal(mute.synth.speaking,false);assert.equal(mute.run('player.playing'),true);
 mute.element('#voice-toggle').click();mute.advance(60);assert.equal(mute.speechCalls.length,2);
 mute.seek(60);assert.equal(mute.run('player.playing'),false);mute.play();assert.equal(mute.speechCalls.length,3);
-const stale=mute.speechCalls[1],active=mute.run('player.utterance');
-stale.onerror?.({error:'synthesis-failed'});stale.onend?.();
-assert.equal(mute.run('player.utterance'),active,'Old speech callbacks must not clear a newer replay');
+assert.ok(mute.run('narrator.source'),'Replay must retain its active audio source');
 assert.doesNotMatch(mute.element('#voice-note').textContent,/unavailable/);
 
-const rapid=app();rapid.element('#demo-play').click();rapid.element('#demo-play').click();rapid.advance(100);
+const rapid=app({voiceDelay:50});rapid.element('#demo-play').click();rapid.element('#demo-play').click();rapid.advance(100);
 assert.equal(rapid.speechCalls.length,0,'An immediate pause must prevent delayed narration');
 rapid.play();rapid.element('#demo-play').click();rapid.element('#demo-restart').click();
 assert.equal(rapid.run('player.time'),0);assert.equal(rapid.run('player.playing'),false);
-rapid.synth.paused=true;
-rapid.play();assert.equal(rapid.synth.paused,false,'Restart/replay must recover a paused native speech engine');
+rapid.play();assert.equal(rapid.synth.speaking,true,'Restart/replay must start a fresh audio source');
 rapid.run('loadChapter(1)');rapid.advance(100);
 assert.equal(rapid.run('player.playing'),false);assert.equal(rapid.synth.speaking,false,'Changing chapters must stop previous narration');
 
-const delayedEvents=app({startEvent:false});delayedEvents.play();delayedEvents.element('#demo-play').click();
-assert.equal(delayedEvents.synth.speaking,false,'Pause must work even if the browser delays its speech start event');
-delayedEvents.play();assert.equal(delayedEvents.synth.paused,false);assert.equal(delayedEvents.speechCalls.length,2);
-
+const loading=app({voiceDelay:1000});loading.element('#demo-play').click();loading.advance(500);
+assert.equal(loading.run('player.time'),0,'The animation must wait for real audio preparation');
+loading.advance(600);assert.equal(loading.run('player.voiceLoading'),false);assert.equal(loading.synth.speaking,true);
+const failed=app({voiceFails:true});failed.play();assert.equal(failed.run('player.playing'),false);
+assert.match(failed.element('#voice-note').textContent,/Press Play to retry/);
 const midpoint=app();midpoint.play();midpoint.seek(5);midpoint.advance(60);
-assert.ok(midpoint.speechCalls.at(-1).text.length<midpoint.speechCalls[0].text.length,'Seeking into a sentence must align narration with the current point');
-assert.ok(midpoint.speechCalls[0].text.endsWith(midpoint.speechCalls.at(-1).text));
-
-console.log('PASS: three full narrated runs; stable controls; pause/resume; restart; seek; rapid clicks; mute/unmute; stale callbacks; chapter changes.');
+assert.equal(midpoint.speechCalls.at(-1).offset,.5,'Seeking must use the corresponding real audio position');
+console.log('PASS: three full narrated runs; stable controls; pause/resume; restart; seek; rapid clicks; mute; loading; audio failure; chapter changes.');

@@ -1,0 +1,12 @@
+SVOX Pico local English narration
+
+Engine: @echogarden/svoxpico-wasm 0.2.0
+https://github.com/echogarden-project/svoxpico-wasm
+Engine archive verified against the npm registry's SHA-512 integrity value.
+
+English voice data: en-US_ta.bin and en-US_lh0_sg.bin
+https://android.googlesource.com/platform/external/svox/+/refs/heads/main/pico/lang/
+
+Pico is Copyright (C) SVOX AG and contributors; its Android open-source
+distribution and this WASM port use the Apache License, Version 2.0.
+The full license is included in LICENSE in this directory.

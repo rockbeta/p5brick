@@ -5,7 +5,7 @@
   "description": "A 26-chapter p5.js coding course for young creators",
   "scripts": {
     "start": "python3 -m http.server 4173 --directory dist",
-    "check": "node --check dist/course.js && node --check dist/app.js",
-    "test": "node qa/course.test.cjs && node qa/playback.test.cjs"
+    "check": "node --check dist/course.js && node --check dist/app.js && node --check dist/voice.js && node --check dist/pico.mjs",
+    "test": "node qa/course.test.cjs && node qa/playback.test.cjs && node qa/voice.test.mjs"
   }
 }
