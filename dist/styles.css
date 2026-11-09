@@ -31,29 +31,6 @@
 @keyframes warmupBounce{0%,100%{transform:translate(57px,139px)}25%{transform:translate(178px,75px)}50%{transform:translate(142px,139px)}75%{transform:translate(65px,75px)}}
 @keyframes warmupCatch{0%,100%{transform:translateX(29px)}25%{transform:translateX(150px)}50%{transform:translateX(114px)}75%{transform:translateX(37px)}}
 
-/* Comfortable reading sizes and contrast for young learners. */
-.lesson-description{font-size:14px;color:#6b7863}
-.chapter-link{font-size:12px;color:#69765f}
-.demo-illustration{height:auto;aspect-ratio:900/350}
-#concept-canvas{height:auto;aspect-ratio:900/350}
-.demo-caption{font-size:12px;color:#716183;min-height:46px}
-.idea-card>p,.idea-card p.takeaway{font-size:12px;color:#6c7b5e}
-.idea-doodle{color:#7e8a6d}
-.voice-note{color:#7e8972}
-.section-heading>span,.exercise-intro{color:#77856a}
-.exercise-intro{font-size:12px}
-.exercise-card p{font-size:12px;color:#6c7c5e;line-height:1.8}
-.exercise-card h3{font-size:17px}
-.exercise-card code{font-size:10px;color:#7a623e}
-.exercise-card-top>span:first-child{color:#788769}
-.check-button,.hint-button{font-size:11px}
-.hint-button{color:#78876b}
-.exercise-hint,.check-result{font-size:12px}
-.code-layer pre,.code-layer textarea,.line-numbers{font-size:12px;line-height:24px}
-.experiment-note p{font-size:11px;color:#7b896c}
-.experiment-note p code{font-size:10px}
-.preview-footer,.preview-footer>span:last-child{color:#7b896e}
-.map-chapter{font-size:12px}
 .profile-button{display:flex;align-items:center;gap:7px;max-width:170px;min-width:0}
 .profile-button span{margin:0}
 .profile-button>span:first-child{font-size:16px;color:#78886a}
@@ -72,4 +49,182 @@
 .name-skip{background:none;color:#829173;font-size:12px;padding:10px 0}
 .name-dialog .next-button{font-size:13px;padding:13px 17px}
 @media(max-width:650px){.profile-button{max-width:110px;margin-right:8px;font-size:10px}.profile-button>span:first-child{font-size:14px}#profile-label{max-width:67px}.name-dialog{padding:26px}.name-dialog h2{font-size:30px}.name-dialog .next-button{font-size:12px}}
-@media(max-width:650px){.lesson-description{font-size:13px}.demo-caption{font-size:11px}.demo-illustration{min-height:125px}.code-layer pre,.code-layer textarea,.line-numbers{font-size:12px;line-height:24px}.experiment-note p{font-size:10px}.exercise-card p{font-size:12px}}
+
+
+/* Reading sizes and roomier controls for young learners. */
+:root{--text-body:1.125rem;--text-small:.9375rem;--text-label:.8125rem;--sidebar-width:19rem}
+body{font-size:var(--text-body);line-height:1.65}
+button,.chapter-link,.map-chapter{min-height:2.75rem}
+.sidebar{width:var(--sidebar-width);padding:28px 22px 20px}
+.workspace{margin-left:var(--sidebar-width)}
+.brand{font-size:28px;gap:10px}
+.brand-small{font-size:16px}
+.brand-icon{width:36px;height:36px;padding:9px 7px}
+.course-label{font-size:.75rem;letter-spacing:.06em;line-height:1.8;margin:18px 0 26px}
+.progress-card>div:first-child{font-size:var(--text-small);gap:12px}
+.progress-card strong{font-size:var(--text-label);white-space:nowrap}
+.progress-card p,.sidebar-bottom{font-size:var(--text-label);color:#69765f}
+.nav-caption{font-size:var(--text-label);letter-spacing:.06em;gap:10px}
+.nav-caption span,.unit-toggle .unit-count,.chapter-link .chapter-number{font-size:var(--text-label)}
+.unit-toggle{font-size:1rem;line-height:1.5;padding:14px 0;gap:10px}
+.unit-icon{font-size:22px}
+.unit-toggle .chevron{font-size:16px}
+.chapter-link{font-size:1rem;line-height:1.5;padding:11px 10px;color:#69765f}
+.project-kicker{font-size:var(--text-label);letter-spacing:.06em}
+.final-project strong{font-size:26px;line-height:1.3}
+.project-link{font-size:.875rem;gap:8px}
+.sidebar-bottom a{font-size:22px;min-width:32px;text-align:center}
+.topbar{height:auto;min-height:5rem;padding:14px 36px;gap:16px;flex-wrap:wrap}
+.breadcrumbs{font-size:var(--text-small);gap:12px;min-width:0}
+.topbar-actions{gap:12px;flex-wrap:wrap}
+.saved-indicator{font-size:var(--text-label)}
+.subtle-button{font-size:var(--text-small);line-height:1.4;padding:10px 14px}
+.profile-button{max-width:12rem;gap:8px}
+.profile-button>span:first-child{font-size:22px}
+#profile-label{max-width:8rem}
+main{max-width:1360px;padding:40px 36px 0}
+.eyebrow{font-size:var(--text-label);letter-spacing:.07em;flex-wrap:wrap}
+.heading-row{align-items:flex-start}
+h1{font-size:clamp(2.25rem,3.5vw,3.25rem);line-height:1.2;letter-spacing:-1.4px;max-width:none;margin:18px 0 16px}
+.lesson-time{font-size:.875rem;margin-top:24px}
+.lesson-description{font-size:var(--text-body);line-height:1.8;max-width:70ch;color:#5d6c54}
+.lesson-tags{flex-wrap:wrap;gap:8px;margin-top:18px}
+.lesson-tags span{font-size:.875rem;padding:6px 10px}
+.section-heading{margin:36px 0 18px;gap:16px}
+.section-heading h2{font-size:1.5rem;line-height:1.4;gap:12px}
+.step-number{font-size:var(--text-label);width:32px;height:32px;flex-shrink:0}
+.section-heading>span{font-size:var(--text-small);color:#69765f}
+.watch-layout{grid-template-columns:minmax(0,1fr) 300px;align-items:start;gap:24px}
+.demo-card{padding:20px}
+.demo-top{gap:12px}
+.demo-badge{font-size:.75rem;letter-spacing:.07em;line-height:1.6}
+.demo-sound{min-width:44px;min-height:44px;align-items:center;justify-content:center;flex-shrink:0}
+.demo-sound svg{width:22px;height:22px}
+.demo-illustration{height:auto;min-height:280px;display:grid;align-items:center;aspect-ratio:auto}
+#concept-canvas{height:auto;aspect-ratio:900/350}
+.demo-caption{font-size:1rem;line-height:1.75;min-height:72px;padding:16px 4px;color:#665478}
+.demo-controls{display:grid;grid-template-columns:44px 44px minmax(48px,1fr) auto 44px;gap:10px;margin-top:14px;padding-top:14px}
+.play-button{width:44px;height:44px}
+.play-button svg{width:18px;height:18px}
+.demo-restart{font-size:26px;min-width:44px;min-height:44px}
+.demo-controls input{width:100%;height:44px;min-width:0}
+.demo-controls #demo-time{font-size:var(--text-label)}
+.captions-button{font-size:var(--text-label);min-width:44px;min-height:44px;padding:6px}
+.idea-card{display:block;padding:24px}
+.idea-kicker,.remember-label{font-size:var(--text-label);letter-spacing:.07em;line-height:1.5}
+.idea-card h3{font-size:1.625rem;line-height:1.3;margin:18px 0 12px}
+.idea-card>p,.idea-card p.takeaway{font-size:var(--text-body);line-height:1.8;color:#5d6c54}
+.idea-doodle{font-size:.875rem;color:#6d7b5f;line-height:1.7}
+.voice-note{font-size:.875rem;color:#69765f;line-height:1.7;margin-top:12px}
+.editor-toolbar,.preview-toolbar{min-height:60px;height:auto;padding:10px 16px;gap:12px;flex-wrap:wrap}
+.file-tab{font-size:.875rem}
+.file-tab>span{font-size:.75rem}
+.editor-toolbar>div{gap:10px}
+.run-button{font-size:1rem;padding:11px 16px}
+.run-button>span{font-size:.75rem}
+.editor-icon,.icon-button{font-size:24px;min-width:44px;min-height:44px}
+.editor-body{height:420px;min-height:360px;max-height:500px;padding-top:20px}
+.code-layer pre,.code-layer textarea,.line-numbers{font-size:1rem;line-height:1.75}
+.line-numbers{width:56px;min-width:56px;padding-right:14px}
+.editor-footer{font-size:.75rem;line-height:1.6;min-height:44px;padding:8px 14px;flex-wrap:wrap}
+.editor-footer kbd{font-size:.75rem}
+.preview-toolbar{font-size:var(--text-small)}
+.preview-toolbar #run-status{font-size:var(--text-label);color:#69765f}
+.preview-stage{min-height:360px;padding:20px}
+.preview-stage iframe{min-height:300px;max-height:340px}
+.preview-footer{height:auto;min-height:44px;padding:8px 14px;gap:4px 12px;flex-wrap:wrap;font-size:var(--text-label);line-height:1.6;color:#69765f}
+.preview-footer>span:last-child{font-size:var(--text-label);color:#69765f}
+.runtime-message{font-size:1rem;line-height:1.7}
+.experiment-note{align-items:flex-start;gap:12px;margin-top:16px;flex-wrap:wrap}
+.experiment-note p{font-size:var(--text-small);line-height:1.8;color:#69765f;flex-basis:240px}
+.experiment-note p code{font-size:.875rem;overflow-wrap:anywhere}
+.experiment-note button{font-size:var(--text-small)}
+.exercise-section .section-heading{margin-top:40px;margin-bottom:12px}
+.exercise-intro{font-size:var(--text-body);line-height:1.8;color:#5d6c54;margin-bottom:24px}
+.exercise-grid{gap:20px}
+.exercise-card{padding:24px 20px 20px}
+.exercise-card-top{gap:10px;flex-wrap:wrap}
+.exercise-card-top>span:first-child,.exercise-type{font-size:.75rem;line-height:1.5}
+.exercise-card-top>span:first-child{color:#69765f}
+.exercise-type{padding:4px 7px}
+.exercise-card h3{font-size:1.375rem;line-height:1.4;margin:18px 0 12px}
+.exercise-card p{font-size:var(--text-body);line-height:1.8;color:#5d6c54;margin-bottom:18px}
+.exercise-card code{font-size:.9375rem;overflow-wrap:anywhere;color:#7a623e}
+.exercise-actions{flex-wrap:wrap;gap:10px;justify-content:space-between}
+.hint-button,.check-button{font-size:1rem;line-height:1.5}
+.hint-button{color:#657758}
+.check-button{padding:10px 14px}
+.exercise-hint,.check-result,#exercise-feedback{font-size:1rem;line-height:1.8}
+.exercise-hint{padding:14px}
+.lesson-footer{gap:20px;flex-wrap:wrap;padding:26px 0}
+.previous-button,.next-button{font-size:1rem;line-height:1.5}
+.previous-button{padding:12px 0}
+.next-button{padding:12px 18px}
+.lesson-footer>div>span{font-size:.75rem;letter-spacing:.07em}
+.lesson-footer strong{font-size:var(--text-small);line-height:1.5}
+.page-footnote{font-size:var(--text-label);line-height:1.7;gap:12px;flex-wrap:wrap}
+.dialog-header h2{font-size:2rem;line-height:1.3}
+.dialog-header p,.name-dialog p{font-size:1.0625rem;line-height:1.8}
+.map-unit h3{font-size:.875rem;line-height:1.6}
+.map-chapter{font-size:1rem;line-height:1.5;padding:14px}
+.map-chapter>span{font-size:.875rem;flex-shrink:0}
+.toast{font-size:1rem;line-height:1.6;left:calc(50% + 152px);max-width:calc(100vw - 40px)}
+.name-dialog{width:min(520px,calc(100vw - 32px))}
+.name-dialog .eyebrow{font-size:var(--text-label)}
+.name-dialog h2{font-size:2.125rem;line-height:1.3}
+.name-dialog label,.name-skip{font-size:1rem}
+.name-dialog input{font-size:var(--text-body);min-height:50px;padding:12px 14px}
+.name-dialog p.name-storage-note{font-size:.875rem;line-height:1.8}
+.name-dialog .next-button{font-size:1rem;padding:12px 18px}
+.warmup-title{font-size:1.5rem;line-height:1.3}
+.warmup-status{font-size:1rem;line-height:1.65}
+.warmup-hint{font-size:.875rem;line-height:1.6}
+.warmup-continue{font-size:.9375rem;line-height:1.5;padding:8px 0}
+@media(max-width:1280px){
+  .saved-indicator{display:none}
+  .watch-layout,.playground,.exercise-grid{grid-template-columns:minmax(0,1fr)}
+  .preview-pane{border-left:0;border-top:1px solid var(--line)}
+  .preview-stage iframe{max-width:560px}
+  .idea-card{display:block}
+}
+@media(max-width:1050px){
+  .sidebar{transform:translateX(-100%);width:min(var(--sidebar-width),calc(100vw - 24px));transition:transform .2s;box-shadow:15px 0 50px #28391f11}
+  .sidebar.mobile-open{transform:translateX(0)}
+  .workspace{margin-left:0}
+  .mobile-only{display:block}
+  .topbar{padding:12px 24px}
+  main{padding:32px 24px 0}
+  .toast{left:50%}
+}
+@media(max-width:650px){
+  .topbar{padding:12px 16px;gap:10px}
+  .breadcrumbs{font-size:.875rem;gap:8px}
+  .topbar-actions{gap:8px}
+  .subtle-button{font-size:.875rem;padding:10px 12px}
+  .subtle-button span{margin-left:8px}
+  .profile-button{max-width:10rem;margin-right:0}
+  #profile-label{max-width:6rem}
+  main{padding:28px 16px 0}
+  h1{font-size:2.125rem;line-height:1.25;letter-spacing:-1px;max-width:none}
+  .eyebrow{font-size:.75rem;gap:8px}
+  .section-heading h2{font-size:1.375rem}
+  .demo-card{padding:16px}
+  .demo-badge{font-size:.75rem;letter-spacing:.03em}
+  .demo-controls{grid-template-columns:44px 44px minmax(0,1fr) 44px;gap:10px}
+  .demo-controls input{grid-column:1/-1;grid-row:1}
+  .demo-controls #demo-time{text-align:right}
+  .editor-toolbar{padding:10px 12px;gap:8px}
+  .editor-toolbar>div{gap:4px}
+  .run-button{padding:10px 12px}
+  .editor-body{height:380px;min-height:340px}
+  .preview-stage{padding:10px;min-height:300px}
+  .preview-stage iframe{min-height:260px;height:280px;max-height:300px}
+  .exercise-card{padding:20px}
+  .lesson-footer{gap:12px}
+  .next-button{padding:12px 14px}
+  .next-button>span{margin-left:8px}
+  .name-dialog{padding:24px}
+  .name-dialog h2{font-size:2rem}
+  .name-dialog .dialog-actions{gap:14px;flex-wrap:wrap}
+  .toast{font-size:1rem;max-width:calc(100vw - 32px)}
+}
