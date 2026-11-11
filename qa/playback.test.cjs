@@ -6,12 +6,12 @@ const vm = require('node:vm');
 // No browser, voice service, packages, or network access is needed in CI.
 function app({voiceDelay=1,voiceFails=false,voiceDuration=10,storage=new Map([['brick-by-brick-v1',JSON.stringify({learnerName:'Alex',namePromptSeen:true})]])}={}){
   let now=0,serial=0,frame;
-  const timers=new Map(),elements=new Map(),speechCalls=[],speechRequests=[];
+  const timers=new Map(),elements=new Map(),speechCalls=[],speechRequests=[],windowEvents={};
   const canvas=new Proxy({}, {get:()=>()=>{},set:()=>true});
   function element(selector){
     if(elements.has(selector))return elements.get(selector);
     const attrs=new Map(),events={};let html='';
-    const el={value:'',textContent:'',style:{},scrollTop:0,scrollLeft:0,selectionStart:0,hidden:false,htmlWrites:0,events,
+    const el={value:'',textContent:'',style:{},scrollTop:0,scrollLeft:0,selectionStart:0,hidden:false,htmlWrites:0,events,contentWindow:{},
       classList:{add(){},remove(){},toggle(){}},
       get innerHTML(){return html;},set innerHTML(value){html=value;this.htmlWrites++;},
       setAttribute(name,value){attrs.set(name,String(value));},getAttribute(name){return attrs.get(name)??null;},
@@ -40,7 +40,7 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10,storage=new Map([['
     localStorage:{get length(){return storage.size;},key:i=>[...storage.keys()][i],getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
     LocalNarrator:Narrator,
     setTimeout(fn,delay=0){const id=++serial;timers.set(id,{fn,at:now+delay});return id;},
-    clearTimeout(id){timers.delete(id);},requestAnimationFrame(fn){frame=fn;},addEventListener(){},scrollTo(){},
+    clearTimeout(id){timers.delete(id);},requestAnimationFrame(fn){frame=fn;},addEventListener(type,fn){windowEvents[type]=fn;},scrollTo(){},
   };
   context.window=context;vm.createContext(context);
   vm.runInContext(fs.readFileSync('dist/course.js','utf8'),context);
@@ -58,7 +58,8 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10,storage=new Map([['
   function play(){element('#demo-play').click();advance(60);}
   function finish(){for(let i=0;i<620&&run('player.playing');i++)advance(100);}
   function seek(time){element('#demo-seek').value=String(time);element('#demo-seek').events.input({target:element('#demo-seek')});}
-  return {run,element,synth,speechCalls,speechRequests,advance,play,finish,seek,storage,staleFrame:()=>frame(now-50)};
+  function frameMessage(data, runId=run('runId')){windowEvents.message({source:element('#sketch-frame').contentWindow,data:{source:'brick-sketch',runId,...data}});}
+  return {run,element,synth,speechCalls,speechRequests,advance,play,finish,seek,storage,frameMessage,staleFrame:()=>frame(now-50)};
 }
 
 const repeated=app();
@@ -196,3 +197,21 @@ assert.equal(reopened.run('currentVersion(1).id'), history.run('currentVersion(1
 reopened.run('loadChapter(1)');
 assert.equal(reopened.run('sketchHistory.list(2).length'), 0);
 console.log('PASS: Run snapshots, keyboard shortcut, diff labels, draft preservation, branching, replay, and chapter isolation after reload.');
+
+const runner=app(), status=runner.element('#run-status'), feedback=runner.element('#runtime-message');
+const preview=runner.run('frameDocument("some random words", 1)');
+for(const [,script] of preview.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))new vm.Script(script);
+const previousRun=runner.run('runId');
+runner.element('#run-code').click();
+runner.frameMessage({type:'ready',width:480,height:320},previousRun);
+assert.equal(status.textContent,'Starting…','An old preview must not mark a new run ready');
+runner.frameMessage({type:'error',message:"Unexpected identifier 'random'",filename:'blob:null/sketch',line:2});
+assert.match(feedback.textContent,/Look near line 2/);
+runner.advance(8001);
+assert.match(feedback.textContent,/Unexpected identifier/,'A reported error must cancel the startup timeout');
+runner.element('#run-code').click();runner.advance(8001);
+assert.match(feedback.textContent,/took too long to start/);
+runner.element('#run-code').click();
+runner.frameMessage({type:'ready',width:480,height:320});runner.advance(8001);
+assert.equal(status.textContent,'Running');assert.equal(feedback.textContent,'');
+console.log('PASS: sketch error routing, startup timeout, stale frame messages, and successful retry.');

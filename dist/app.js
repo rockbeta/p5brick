@@ -15,6 +15,8 @@ state.historyHeads = saved.historyHeads || {};
 const sketchHistory = new SketchHistory();
 let editorReady = false;
 let current=0, expanded=new Set([0]), runId=0, runtimeError=false, runReady=false, draftTimer;
+const SKETCH_START_TIMEOUT = 8000;
+let sketchTimer;
 let pendingChecks = new Map(), checkSerial=0;
 const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,voiceLoading:false,loadingTimer:null,segmentSeconds:10};
 const narrator=new LocalNarrator();
@@ -59,10 +61,15 @@ function highlight(code){
 function updateEditor(){
   const value=$('#code-editor').value;
   $('#code-highlight code').innerHTML=highlight(value);
-  $('#line-numbers').textContent=Array.from({length:value.split('\n').length+1},(_,i)=>i+1).join('\n');
+  $('#line-numbers span').textContent=Array.from({length:value.split('\n').length},(_,i)=>i+1).join('\n');
   syncScroll();updateCursor();
 }
-function syncScroll(){const el=$('#code-editor');$('#code-highlight').scrollTop=el.scrollTop;$('#code-highlight').scrollLeft=el.scrollLeft;$('#line-numbers').scrollTop=el.scrollTop;}
+function syncScroll(){
+  const { scrollLeft, scrollTop } = $('#code-editor');
+  // Translate the text itself so hidden scrollbars cannot clamp the two layers differently.
+  $('#code-highlight code').style.transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`;
+  $('#line-numbers span').style.transform = `translateY(${-scrollTop}px)`;
+}
 function updateCursor(){const a=$('#code-editor'),before=a.value.slice(0,a.selectionStart),lines=before.split('\n');$('#cursor-position').textContent=`Ln ${lines.length}, Col ${lines.at(-1).length+1}`;}
 function renderExercises(){
   const lesson=COURSE[current];
@@ -108,10 +115,27 @@ function frameDocument(code,id){
   const payload=JSON.stringify(code).replace(/</g,'\\u003c');
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}body{display:flex;align-items:center;justify-content:center}main{display:contents}canvas{display:block;max-width:100%!important;max-height:100%!important;object-fit:contain;width:auto!important;height:auto!important;border-radius:5px;box-shadow:0 4px 20px #46503708}canvas:focus{outline:0}</style><script>
     const __runId=${id};
-    const __send=(type,data={})=>parent.postMessage({source:'brick-sketch',runId:__runId,type,...data},'*');
+    const __send=(type,data={})=>parent.postMessage({...data,source:'brick-sketch',runId:__runId,type},'*');
     let __hasError=false;
-    window.onerror=(message,source,line,column)=>{__hasError=true;__send('error',{message:String(message),source:String(source||''),line,column});return true;};
-    window.onunhandledrejection=e=>{__hasError=true;__send('error',{message:String(e.reason?.message||e.reason)});};
+    let __sketchUrl='';
+    function __reportError(message, filename='', line=0){
+      if(__hasError)return;
+      __hasError=true;
+      __send('error',{message:String(message),filename:String(filename),line});
+    }
+    function __reportException(error, message, filename, line){
+      // p5 may surface a sketch error through a rejected promise. Its stack still
+      // points to the sketch even when the event itself has no source location.
+      if(__sketchUrl&&error?.stack){
+        const marker=__sketchUrl+':';
+        const frame=String(error.stack).split('\\n').find(entry=>entry.includes(marker));
+        const sketchLine=frame?.slice(frame.indexOf(marker)+marker.length).match(/^[0-9]+/)?.[0];
+        if(sketchLine){filename=__sketchUrl;line=Number(sketchLine);}
+      }
+      __reportError(message,filename,line);
+    }
+    window.onerror=(message,filename,line,column,error)=>{__reportException(error,message,filename,line);return true;};
+    window.addEventListener('unhandledrejection',e=>__reportException(e.reason,e.reason?.message||e.reason));
     window.__calls={};window.__setupCalls={};
     const __tracked=['circle','rect','fill','background','frameRate','random','createCanvas','text','line'];
     for(const n of __tracked){window.__calls[n]=[];window.__setupCalls[n]=[];}
@@ -120,20 +144,40 @@ function frameDocument(code,id){
     function __instrument(){for(const n of __tracked){const original=window[n];window[n]=function(...args){if(n==='fill')__fill=args.map(String).join(',');if(n==='circle'||n==='rect')args.fill=__fill;const store=__recordSetup?window.__setupCalls:window.__calls;if(store[n].length<10000)store[n].push(args);return original.apply(this,args);};}}
     window.addEventListener('message',e=>{if(e.source!==parent||e.data?.type!=='inspect'||e.data.runId!==__runId)return;let results=e.data.tests.map(test=>{try{return !__hasError&&Boolean((0,eval)(test));}catch{return false;}});__send('checks',{request:e.data.request,results});});
     window.addEventListener('load',()=>{setTimeout(()=>{const canvas=document.querySelector('canvas');if(canvas){canvas.tabIndex=0;canvas.setAttribute('aria-label','Interactive p5.js canvas. Click to focus.');canvas.addEventListener('pointerdown',()=>canvas.focus());}if(!__hasError)__send('ready',{width:window.width,height:window.height});},120);});
-  <\/script><script src="${escapeHTML(p5url)}" onerror="__send('error',{message:'The p5.js library could not load. Reload this page and try again.'})"><\/script><script>
-    const __script=document.createElement('script');__script.textContent=${payload};document.head.appendChild(__script);
-    const __originalSetup=window.setup;
-    const __originalDraw=window.draw;
-    if(__originalSetup)window.setup=function(){__instrument();__originalSetup();__recordSetup=false;};
-    if(__originalDraw)window.draw=function(){for(const n of __tracked)window.__calls[n]=[];__originalDraw();};
+  <\/script><script src="${escapeHTML(p5url)}" onerror="__reportError('The p5.js library could not load. Try Run code again.')"><\/script><script>
+    // A classic script keeps the sketch's globals available to p5 and exercise checks.
+    // Creating the URL inside this frame lets WebKit report the sketch's own errors.
+    if(!__hasError){
+      const __script=document.createElement('script');
+      __sketchUrl=URL.createObjectURL(new Blob([${payload}],{type:'text/javascript'}));
+      __script.src=__sketchUrl;
+      __script.onload=()=>{
+        URL.revokeObjectURL(__sketchUrl);
+        if(__hasError)return;
+        const __originalSetup=window.setup;
+        const __originalDraw=window.draw;
+        if(__originalSetup)window.setup=function(){__instrument();__originalSetup();__recordSetup=false;};
+        if(__originalDraw)window.draw=function(){for(const n of __tracked)window.__calls[n]=[];__originalDraw();};
+      };
+      __script.onerror=()=>{
+        URL.revokeObjectURL(__sketchUrl);
+        __reportError('The sketch could not load. Try Run code again.');
+      };
+      document.head.appendChild(__script);
+    }
   <\/script></head><body></body></html>`;
 }
 function runSketch(){
   saveDraft();runId++;runtimeError=false;runReady=false;
+  clearTimeout(sketchTimer);
   for(const request of pendingChecks.values()){clearTimeout(request.timer);request.resolve(null);}pendingChecks.clear();
   $('#runtime-message').classList.remove('visible');$('#runtime-message').textContent='';$('#run-status').textContent='Starting…';
-  // Syntax errors are reported by the sandbox, which knows the real line number.
-  $('#sketch-frame').srcdoc=frameDocument($('#code-editor').value,runId);
+  const frame = $('#sketch-frame');
+  sketchTimer = setTimeout(() => {
+    frame.srcdoc = '';
+    showRunProblem('The preview took too long to start. Check your connection and try Run code again.');
+  }, SKETCH_START_TIMEOUT);
+  frame.srcdoc=frameDocument($('#code-editor').value,runId);
 }
 
 function starterVersion(chapter) {
@@ -268,18 +312,22 @@ function friendlyError(message){
   if(/Assignment to constant/i.test(m))return 'You tried to change a const. Use let for values that change.';
   return '';
 }
-function showError(message,line,source=''){
+function showRunProblem(message) {
+  clearTimeout(sketchTimer);
   runtimeError=true;runReady=false;$('#run-status').textContent='Let’s fix this';
+  $('#runtime-message').textContent=message;
+  $('#runtime-message').classList.add('visible');
+}
+function showError(message,line,filename=''){
   const clean=String(message).replace(/^Uncaught\s+/,'').replace(/Failed to execute '\w+' on '\w+':\s*/,'');
   const hint=friendlyError(message);
-  const where=line>0&&!/p5(\.min)?\.js/.test(source)?`Look near line ${line}.\n`:'';
-  $('#runtime-message').textContent=`${hint?`💡 ${hint}\n`:''}${where}A clue from JavaScript: ${clean}${hint?'':'\nCheck your spelling, brackets, and quotes, then try Run code again.'}`;
-  $('#runtime-message').classList.add('visible');
+  const where=line>0&&!/p5(\.min)?\.js/.test(filename)?`Look near line ${line}.\n`:'';
+  showRunProblem(`${hint?`💡 ${hint}\n`:''}${where}A clue from JavaScript: ${clean}${hint?'':'\nCheck your spelling, brackets, and quotes, then try Run code again.'}`);
 }
 window.addEventListener('message',e=>{
   const d=e.data;if(e.source!==$('#sketch-frame').contentWindow||d?.source!=='brick-sketch'||d.runId!==runId)return;
-  if(d.type==='error')showError(d.message,d.line,d.source);
-  if(d.type==='ready'&&!runtimeError){runReady=true;$('#run-status').textContent='Running';$('#canvas-size').textContent=`${d.width || 480} × ${d.height || 320}`;}
+  if(d.type==='error'&&!runtimeError)showError(d.message,d.line,d.filename);
+  if(d.type==='ready'&&!runtimeError){clearTimeout(sketchTimer);runReady=true;$('#run-status').textContent='Running';$('#canvas-size').textContent=`${d.width || 480} × ${d.height || 320}`;}
   if(d.type==='checks'){const req=pendingChecks.get(d.request);if(req){clearTimeout(req.timer);pendingChecks.delete(d.request);req.resolve(d.results);}}
 });
 function inspect(tests){return new Promise(resolve=>{const request=++checkSerial;const timer=setTimeout(()=>{pendingChecks.delete(request);resolve(null);},3000);pendingChecks.set(request,{resolve,timer});$('#sketch-frame').contentWindow.postMessage({type:'inspect',runId,request,tests},'*');});}
@@ -289,7 +337,7 @@ async function checkExercise(i){
   // Always run the current editor contents so feedback never checks an old preview.
   button.disabled=true;button.textContent='Running…';result.className='check-result';result.textContent='Trying your latest sketch…';runSketch();
   const expectedRun=runId,start=performance.now();
-  while(!runReady&&!runtimeError&&runId===expectedRun&&performance.now()-start<4500)await new Promise(r=>setTimeout(r,60));
+  while(!runReady&&!runtimeError&&runId===expectedRun&&performance.now()-start<SKETCH_START_TIMEOUT)await new Promise(r=>setTimeout(r,60));
   if(current!==chapter)return;
   let response=null;if(runReady&&!runtimeError&&runId===expectedRun)response=await inspect([lesson.exercises[i].test]);
   if(current!==chapter)return;
