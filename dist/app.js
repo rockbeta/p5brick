@@ -143,6 +143,7 @@ function frameDocument(code,id){
     // Each recorded circle/rect remembers the fill color it was drawn with.
     function __instrument(){for(const n of __tracked){const original=window[n];window[n]=function(...args){if(n==='fill')__fill=args.map(String).join(',');if(n==='circle'||n==='rect')args.fill=__fill;const store=__recordSetup?window.__setupCalls:window.__calls;if(store[n].length<10000)store[n].push(args);return original.apply(this,args);};}}
     window.addEventListener('message',e=>{if(e.source!==parent||e.data?.type!=='inspect'||e.data.runId!==__runId)return;let results=e.data.tests.map(test=>{try{return !__hasError&&Boolean((0,eval)(test));}catch{return false;}});__send('checks',{request:e.data.request,results});});
+    window.addEventListener('keydown',event=>{if(event.key==='Escape')__send('escape');});
     window.addEventListener('load',()=>{setTimeout(()=>{const canvas=document.querySelector('canvas');if(canvas){canvas.tabIndex=0;canvas.setAttribute('aria-label','Interactive p5.js canvas. Click to focus.');canvas.addEventListener('pointerdown',()=>canvas.focus());}if(!__hasError)__send('ready',{width:window.width,height:window.height});},120);});
   <\/script><script src="${escapeHTML(p5url)}" onerror="__reportError('The p5.js library could not load. Try Run code again.')"><\/script><script>
     // A classic script keeps the sketch's globals available to p5 and exercise checks.
@@ -329,6 +330,7 @@ window.addEventListener('message',e=>{
   if(d.type==='error'&&!runtimeError)showError(d.message,d.line,d.filename);
   if(d.type==='ready'&&!runtimeError){clearTimeout(sketchTimer);runReady=true;$('#run-status').textContent='Running';$('#canvas-size').textContent=`${d.width || 480} × ${d.height || 320}`;}
   if(d.type==='checks'){const req=pendingChecks.get(d.request);if(req){clearTimeout(req.timer);pendingChecks.delete(d.request);req.resolve(d.results);}}
+  if(d.type==='escape')exitWorkspaceOnEscape();
 });
 function inspect(tests){return new Promise(resolve=>{const request=++checkSerial;const timer=setTimeout(()=>{pendingChecks.delete(request);resolve(null);},3000);pendingChecks.set(request,{resolve,timer});$('#sketch-frame').contentWindow.postMessage({type:'inspect',runId,request,tests},'*');});}
 async function checkExercise(i){
@@ -530,6 +532,76 @@ function showMap(){
   $('#map-content').querySelectorAll('[data-chapter]').forEach(b=>b.addEventListener('click',()=>{$('#course-dialog').close();goChapter(+b.dataset.chapter);}));
   $('#course-dialog').showModal();
 }
+
+const codingWorkspace = $('#coding-workspace');
+const workspaceButton = $('#fullscreen-workspace');
+let workspaceBackground = [], lessonScroll = 0;
+let workspaceTransition = false, nativeWorkspaceFullscreen = false;
+
+function setWorkspaceMode(expanded) {
+  if (codingWorkspace.classList.contains('is-expanded') === expanded) return;
+  if (expanded) {
+    lessonScroll = window.scrollY;
+    if (player.playing) pausePlayback();
+    workspaceBackground = [...document.querySelectorAll(
+      '.skip-link, .sidebar, .topbar, #main > :not(.code-section), .code-section > :not(#coding-workspace)'
+    )].filter(element => !element.inert);
+  }
+
+  codingWorkspace.classList.toggle('is-expanded', expanded);
+  document.body.classList.toggle('workspace-mode', expanded);
+  workspaceButton.textContent = expanded ? 'Exit full screen' : 'Full screen';
+  for (const element of workspaceBackground) element.inert = expanded;
+  if (!expanded) {
+    workspaceBackground = [];
+    workspaceButton.focus({ preventScroll: true });
+    window.scrollTo({ top: lessonScroll, behavior: 'instant' });
+  }
+  syncScroll();
+}
+
+async function toggleWorkspaceFullscreen() {
+  if (workspaceTransition) return;
+  workspaceTransition = true;
+  try {
+    if (codingWorkspace.classList.contains('is-expanded')) {
+      if (document.fullscreenElement === document.documentElement) await document.exitFullscreen();
+      nativeWorkspaceFullscreen = false;
+      setWorkspaceMode(false);
+    } else {
+      setWorkspaceMode(true);
+      // Fullscreen on the document keeps History and Reset dialogs in the same view.
+      if (document.fullscreenEnabled) {
+        await document.documentElement.requestFullscreen();
+        nativeWorkspaceFullscreen = document.fullscreenElement === document.documentElement;
+        if (!nativeWorkspaceFullscreen) setWorkspaceMode(false);
+      }
+    }
+  } catch {
+    // The expanded layout is usable even when the browser denies native fullscreen.
+  } finally {
+    workspaceTransition = false;
+  }
+}
+
+function exitWorkspaceOnEscape() {
+  if (workspaceTransition || document.fullscreenElement || document.querySelector('dialog[open]')) return false;
+  if (!codingWorkspace.classList.contains('is-expanded')) return false;
+  setWorkspaceMode(false);
+  return true;
+}
+
+workspaceButton.addEventListener('click', toggleWorkspaceFullscreen);
+document.addEventListener('fullscreenchange', () => {
+  if (nativeWorkspaceFullscreen && document.fullscreenElement !== document.documentElement) {
+    nativeWorkspaceFullscreen = false;
+    setWorkspaceMode(false);
+  }
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && exitWorkspaceOnEscape()) event.preventDefault();
+});
+
 let toastTimer;
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),3500);}
 $('#code-editor').addEventListener('input',()=>{updateEditor();clearTimeout(draftTimer);draftTimer=setTimeout(saveDraft,300);$('#run-status').textContent='Changes to run';});
