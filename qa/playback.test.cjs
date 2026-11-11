@@ -4,7 +4,7 @@ const vm = require('node:vm');
 
 // Boot the real app with a deterministic clock and audio-output stand-in.
 // No browser, voice service, packages, or network access is needed in CI.
-function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
+function app({voiceDelay=1,voiceFails=false,voiceDuration=10,storage=new Map([['brick-by-brick-v1',JSON.stringify({learnerName:'Alex',namePromptSeen:true})]])}={}){
   let now=0,serial=0,frame;
   const timers=new Map(),elements=new Map(),speechCalls=[],speechRequests=[];
   const canvas=new Proxy({}, {get:()=>()=>{},set:()=>true});
@@ -16,7 +16,7 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
       get innerHTML(){return html;},set innerHTML(value){html=value;this.htmlWrites++;},
       setAttribute(name,value){attrs.set(name,String(value));},getAttribute(name){return attrs.get(name)??null;},
       addEventListener(type,fn){events[type]=fn;},querySelectorAll(){return [];},getContext(){return canvas;},
-      showModal(){this.open=true;},close(){this.open=false;events.close?.();},focus(){},setCustomValidity(){},reportValidity(){},click(){events.click?.();}
+      showModal(){this.open=true;},close(){this.open=false;events.close?.();},focus(){},setSelectionRange(start){this.selectionStart=start;},setCustomValidity(){},reportValidity(){},click(){events.click?.();}
     };
     elements.set(selector,el);return el;
   }
@@ -37,7 +37,7 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   }
   const context={console,document,URL,performance:{now:()=>now},
     location:{href:'https://example.test/p5brick/',hash:'#chapter/1'},
-    localStorage:{getItem:()=>JSON.stringify({learnerName:'Alex',namePromptSeen:true}),setItem(){}},
+    localStorage:{get length(){return storage.size;},key:i=>[...storage.keys()][i],getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
     LocalNarrator:Narrator,
     setTimeout(fn,delay=0){const id=++serial;timers.set(id,{fn,at:now+delay});return id;},
     clearTimeout(id){timers.delete(id);},requestAnimationFrame(fn){frame=fn;},addEventListener(){},scrollTo(){},
@@ -45,6 +45,7 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   context.window=context;vm.createContext(context);
   vm.runInContext(fs.readFileSync('dist/course.js','utf8'),context);
   vm.runInContext(fs.readFileSync('dist/narration.js','utf8'),context);
+  vm.runInContext(fs.readFileSync('dist/history.js','utf8'),context);
   vm.runInContext(fs.readFileSync('dist/app.js','utf8'),context);
   const run=code=>vm.runInContext(code,context);
   // Canvas geometry has separate course checks; these tests isolate playback.
@@ -57,7 +58,7 @@ function app({voiceDelay=1,voiceFails=false,voiceDuration=10}={}){
   function play(){element('#demo-play').click();advance(60);}
   function finish(){for(let i=0;i<620&&run('player.playing');i++)advance(100);}
   function seek(time){element('#demo-seek').value=String(time);element('#demo-seek').events.input({target:element('#demo-seek')});}
-  return {run,element,synth,speechCalls,speechRequests,advance,play,finish,seek,staleFrame:()=>frame(now-50)};
+  return {run,element,synth,speechCalls,speechRequests,advance,play,finish,seek,storage,staleFrame:()=>frame(now-50)};
 }
 
 const repeated=app();
@@ -165,3 +166,33 @@ assert.match(repeated.run("friendlyError(\"Uncaught SyntaxError: Identifier 'sco
 repeated.run("showError('Uncaught ReferenceError: circel is not defined', 12, '')");
 assert.match(repeated.element('#runtime-message').textContent,/Look near line 12/);
 console.log('PASS: three full narrated runs; stable controls; pause/resume; restart; seek; rapid clicks; mute; loading; audio failure; chapter changes; friendly error hints.');
+
+const history = app();
+const editor = history.element('#code-editor');
+assert.equal(history.run('sketchHistory.list(1).length'), 0, 'Automatic preview must not create versions');
+editor.value = editor.value.replace('160, 80', '160, 120');
+history.element('#run-code').click();
+const firstVersion = history.run('currentVersion(1).id');
+assert.equal(history.run('currentVersion(1).label'), 'Change the circle size from 80 to 120.');
+editor.value = editor.value.replace('160, 120', '160, 140');
+editor.events.keydown({ key: 'Enter', ctrlKey: true, preventDefault() {} });
+const originalBranch = history.run('currentVersion(1).id');
+editor.value += '\n// Unrun edit';
+history.run(`historySelection = sketchHistory.get(1, ${JSON.stringify(firstVersion)}); restoreHistoryVersion()`);
+assert.match(editor.value, /160, 120/);
+assert.equal(history.run('sketchHistory.list(1).find(node => node.label === "Save draft before restoring.").parentId'), originalBranch);
+editor.value = editor.value.replace('160, 120', '160, 160');
+history.element('#run-code').click();
+assert.equal(history.run('currentVersion(1).parentId'), firstVersion);
+assert.equal(history.run(`sketchHistory.get(1, ${JSON.stringify(originalBranch)}).code.includes('160, 140')`), true);
+history.element('#run-code').click();
+assert.equal(history.run('currentVersion(1).label'), 'Run the same code again.');
+history.element('#restart-preview').click();
+assert.equal(history.run('sketchHistory.list(1).length'), 5);
+const reopened = app({ storage: history.storage });
+assert.equal(reopened.run('sketchHistory.list(1).length'), 5);
+assert.equal(reopened.element('#code-editor').value, editor.value);
+assert.equal(reopened.run('currentVersion(1).id'), history.run('currentVersion(1).id'));
+reopened.run('loadChapter(1)');
+assert.equal(reopened.run('sketchHistory.list(2).length'), 0);
+console.log('PASS: Run snapshots, keyboard shortcut, diff labels, draft preservation, branching, replay, and chapter isolation after reload.');

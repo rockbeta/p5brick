@@ -228,3 +228,72 @@ h1{font-size:clamp(2.25rem,3.5vw,3.25rem);line-height:1.2;letter-spacing:-1.4px;
   .name-dialog .dialog-actions{gap:14px;flex-wrap:wrap}
   .toast{font-size:1rem;max-width:calc(100vw - 32px)}
 }
+
+.history-button {
+  padding: 8px 12px;
+  border: 1px solid #647377;
+  border-radius: 6px;
+  background: #334246;
+  color: #f0f3ec;
+  font-size: .9375rem;
+}
+.history-button:hover { background: #48595c; }
+.editor-actions { flex-wrap: wrap; }
+#history-dialog {
+  width: min(960px, calc(100% - 24px));
+  max-height: 90dvh;
+  padding: clamp(16px, 3vw, 30px);
+}
+#history-dialog .dialog-header { gap: 12px; }
+#history-dialog .dialog-header p { margin: 8px 0 16px; color: #5d6c54; }
+#history-storage-note { color: #835027; font-size: .9375rem; }
+.history-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 18px;
+}
+#history-versions {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 45vh;
+  overflow: auto;
+  border: 1px solid #dce1d4;
+  border-radius: 8px;
+  background: #f1f3ec;
+}
+#history-versions li { margin-inline-start: calc(var(--history-depth) * 12px); }
+#history-versions li + li { margin-top: 4px; }
+#history-versions button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: #fafbf7;
+  color: #2e3b34;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+#history-versions button:hover { background: #e9eee2; }
+#history-versions button[aria-pressed="true"] { background: #dfe9d9; border-color: #769273; }
+#history-versions button strong { display: block; font-size: .9375rem; font-weight: 600; }
+#history-versions button span, #history-details { display: block; font-size: .8125rem; color: #53644f; }
+.history-preview { min-width: 0; }
+#history-selection { margin: 0; font-size: 1.125rem; overflow-wrap: anywhere; }
+#history-details { margin: 4px 0 10px; }
+.history-preview pre {
+  margin: 0 0 12px;
+  max-height: 33vh;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 7px;
+  background: #273438;
+  color: #edf2e9;
+  font: .9375rem/1.65 var(--mono);
+}
+@media (max-width: 650px) {
+  .history-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  #history-versions { max-height: 25vh; }
+  .history-preview pre { max-height: 24vh; }
+}

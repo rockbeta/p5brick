@@ -11,6 +11,9 @@ let storageAvailable = true;
 let saved;
 try { saved = JSON.parse(localStorage.getItem('brick-by-brick-v1') || '{}') || {}; } catch { saved = {}; storageAvailable = false; }
 const state = {drafts:saved.drafts || {}, passed:saved.passed || {}, muted:!!saved.muted, learnerName:normalizeLearnerName(saved.learnerName), namePromptSeen:!!saved.namePromptSeen};
+state.historyHeads = saved.historyHeads || {};
+const sketchHistory = new SketchHistory();
+let editorReady = false;
 let current=0, expanded=new Set([0]), runId=0, runtimeError=false, runReady=false, draftTimer;
 let pendingChecks = new Map(), checkSerial=0;
 const player = {time:0,playing:false,caption:true,segment:-1,last:0,renderedPlaying:null,renderedMuted:null,speechGeneration:0,speechTimer:null,voiceLoading:false,loadingTimer:null,segmentSeconds:10};
@@ -70,7 +73,8 @@ function renderExercises(){
 }
 function loadChapter(index,scroll=true){
   clearTimeout(draftTimer);
-  if($('#code-editor').value)saveDraft();
+  if(editorReady)saveDraft();
+  if($('#history-dialog').open)$('#history-dialog').close();
   current=Math.max(0,Math.min(COURSE.length-1,index));
   const l=COURSE[current],u=UNITS[l.unit];expanded.add(l.unit);
   if(!state.muted)narrator.preload(NARRATION.chapters[l.id-1]).catch(()=>{});
@@ -86,6 +90,7 @@ function loadChapter(index,scroll=true){
   $('#experiment-note').innerHTML=l.note;
   $('#preview-tip').textContent=l.id>=23?'Click to launch · Move to catch':l.id===10?'Click canvas, then use ← and →':l.id>=20?'Move your pointer to catch the ball':l.id===9||l.id===19?'Move your pointer inside the canvas':l.id===18?'Click the canvas to reshuffle':'Your ideas live here. Make them yours.';
   $('#code-editor').value=state.drafts[l.id] ?? l.code;updateEditor();renderNav();renderExercises();updateProgress();
+  editorReady = true;
   $('#previous-chapter').disabled=current===0;
   $('#next-title').textContent=COURSE[current+1]?.short || 'Your next big idea';
   $('#next-kicker').textContent=current===25?'YOU MADE IT':'UP NEXT';
@@ -129,6 +134,122 @@ function runSketch(){
   $('#runtime-message').classList.remove('visible');$('#runtime-message').textContent='';$('#run-status').textContent='Starting…';
   // Syntax errors are reported by the sandbox, which knows the real line number.
   $('#sketch-frame').srcdoc=frameDocument($('#code-editor').value,runId);
+}
+
+function starterVersion(chapter) {
+  return { id: 'starter', code: COURSE[chapter - 1].code, label: 'Starter code' };
+}
+
+function currentVersion(chapter) {
+  return sketchHistory.get(chapter, state.historyHeads[chapter]) || starterVersion(chapter);
+}
+
+function saveVersion(chapter, code, parentId, label) {
+  const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const version = { id, parentId, code, label, createdAt: Date.now() };
+  if (!sketchHistory.save(chapter, version)) {
+    $('#history-storage-note').hidden = false;
+    toast('This version could only be saved for this visit.');
+  }
+  state.historyHeads[chapter] = version.id;
+  return version;
+}
+
+function runAndSaveVersion() {
+  const chapter = current + 1, code = $('#code-editor').value;
+  const parent = currentVersion(chapter), changes = sketchChanges(parent.code, code);
+  const version = saveVersion(chapter, code, parent.id, sketchChangeLabel(changes));
+  runSketch();
+  void modelSketchLabel(changes).then(label => {
+    if (!label) return;
+    version.label = label;
+    sketchHistory.save(chapter, version);
+    if (current + 1 !== chapter || !$('#history-dialog').open) return;
+    const button = [...$('#history-versions').querySelectorAll('button')].find(item => item.dataset.versionId === version.id);
+    if (button) button.querySelector('strong').textContent = label;
+    if (historySelection?.id === version.id) {
+      historySelection.label = label;
+      $('#history-selection').textContent = label;
+    }
+  });
+}
+
+let historySelection;
+let historyVersionNames;
+
+function selectHistoryVersion(version) {
+  historySelection = version;
+  for (const button of $('#history-versions').querySelectorAll('button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.versionId === version.id));
+  }
+  $('#history-selection').textContent = version.label;
+  const savedAt = version.createdAt ? new Date(version.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const details = $('#history-details');
+  details.hidden = version.id === 'starter';
+  details.textContent = [historyVersionNames.get(version.id), savedAt].filter(Boolean).join(' · ');
+  $('#history-code').textContent = version.code;
+  const base = currentVersion(current + 1);
+  const editorCode = $('#code-editor').value;
+  $('#restore-version').disabled = version.id === base.id && editorCode === version.code;
+  $('#restore-version').textContent = editorCode === base.code ? 'Restore version' : 'Save edits and restore';
+}
+
+function showHistory() {
+  const chapter = current + 1, starter = starterVersion(chapter);
+  const versions = sketchHistory.list(chapter);
+  const base = currentVersion(chapter);
+  historyVersionNames = new Map(versions.map((version, i) => [version.id, `Version ${i + 1}`]));
+  historyVersionNames.set(starter.id, starter.label);
+  const children = new Map();
+  for (const version of versions) {
+    const parent = historyVersionNames.has(version.parentId) ? version.parentId : starter.id;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(version);
+  }
+
+  const rows = document.createDocumentFragment();
+  const pending = [{ version: starter, depth: 0 }];
+  while (pending.length) {
+    const { version, depth } = pending.pop();
+    const row = document.createElement('li');
+    row.style.setProperty('--history-depth', String(Math.min(depth, 4)));
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.versionId = version.id;
+    if (version.id === base.id) button.setAttribute('aria-current', 'true');
+    const label = document.createElement('strong');
+    label.textContent = version.label;
+    const parent = historyVersionNames.get(version.parentId);
+    const details = [version.id !== starter.id && historyVersionNames.get(version.id), parent && `From ${parent.toLowerCase()}`, version.id === base.id && 'Current'].filter(Boolean).join(' · ');
+    button.append(label);
+    if (details) {
+      const subtitle = document.createElement('span');
+      subtitle.textContent = details;
+      button.append(subtitle);
+    }
+    button.addEventListener('click', () => selectHistoryVersion(version));
+    row.append(button);
+    rows.append(row);
+    for (const child of children.get(version.id) || []) pending.push({ version: child, depth: depth + 1 });
+  }
+  $('#history-versions').replaceChildren(rows);
+  selectHistoryVersion(base);
+  $('#history-dialog').showModal();
+  $('#history-versions').querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest' });
+}
+
+function restoreHistoryVersion() {
+  if (!historySelection) return;
+  const chapter = current + 1, base = currentVersion(chapter), editor = $('#code-editor');
+  if (editor.value !== base.code) saveVersion(chapter, editor.value, base.id, 'Save draft before restoring.');
+  state.historyHeads[chapter] = historySelection.id;
+  clearTimeout(draftTimer);
+  editor.value = historySelection.code;
+  editor.setSelectionRange(0, 0);
+  updateEditor();
+  runSketch();
+  $('#history-dialog').close();
+  editor.focus();
 }
 // Turn common JavaScript errors into hints a young coder can act on.
 function friendlyError(message){
@@ -367,9 +488,12 @@ $('#code-editor').addEventListener('input',()=>{updateEditor();clearTimeout(draf
 $('#code-editor').addEventListener('scroll',syncScroll);$('#code-editor').addEventListener('click',updateCursor);$('#code-editor').addEventListener('keyup',updateCursor);
 $('#code-editor').addEventListener('keydown',e=>{
   if(e.key==='Tab'){e.preventDefault();const a=e.target,start=a.selectionStart,end=a.selectionEnd;a.setRangeText('  ',start,end,'end');a.dispatchEvent(new Event('input'));}
-  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();runSketch();}
+  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();runAndSaveVersion();}
 });
-$('#run-code').addEventListener('click',runSketch);$('#restart-preview').addEventListener('click',runSketch);
+$('#run-code').addEventListener('click',runAndSaveVersion);$('#restart-preview').addEventListener('click',runSketch);
+$('#code-history').addEventListener('click',showHistory);
+$('#close-history').addEventListener('click',()=>$('#history-dialog').close());
+$('#restore-version').addEventListener('click',restoreHistoryVersion);
 $('#reset-code').addEventListener('click',()=>{$('#reset-dialog').showModal();});$('#cancel-reset').addEventListener('click',()=>$('#reset-dialog').close());
 $('#confirm-reset').addEventListener('click',()=>{$('#code-editor').value=COURSE[current].code;updateEditor();runSketch();$('#reset-dialog').close();toast('Starter code restored. A fresh place to experiment.');});
 $('#fullscreen-preview').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else if($('#preview-stage').requestFullscreen)await $('#preview-stage').requestFullscreen();else toast('Use your browser’s zoom to expand this canvas.');}catch{toast('Full screen is unavailable. You can use your browser’s zoom.');}});
